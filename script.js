@@ -1,4 +1,4 @@
-const { PDFDocument, PDFName, PDFString, PDFBool } = window.PDFLib || {};
+const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
@@ -6,7 +6,7 @@ const labels = ["Campo 1 (X)", "Campo 2 (X)", "Campo 3 (+)", "Resultado (=)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO (Proteção contra ArrayBuffer Detached)
+// 1. CARREGAMENTO (Com clone para evitar erro de ArrayBuffer)
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -23,6 +23,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         await page.render({ canvasContext: context, viewport: viewport }).promise;
+        
         document.querySelectorAll('.marker').forEach(m => m.remove());
         clicks = [];
         document.getElementById('status').innerText = "Clique para: " + labels[0];
@@ -32,7 +33,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     }
 });
 
-// 2. MARCAÇÃO VISUAL
+// 2. MARCAÇÃO VISUAL (Clique e arraste)
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     if (clicks.length >= 4 || !pdfOriginalBytes) return;
     const rect = e.target.getBoundingClientRect();
@@ -59,9 +60,10 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. DOWNLOAD COM CÁLCULO E COMPATIBILIDADE CORRIGIDA
+// 3. DOWNLOAD COM CÁLCULO ATIVO EM NAVEGADORES
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
+        // Usamos .slice(0) para garantir que sempre trabalhamos com uma cópia fresca
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
@@ -71,28 +73,28 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const fieldNames = ['c1', 'c2', 'c3', 'res'];
         const fields = [];
 
+        // Criando os campos
         for (let i = 0; i < 4; i++) {
             const pos = clicks[i];
             const f = form.createTextField(fieldNames[i]);
             const pdfX = (pos.x * width) / pos.w;
             const pdfY = height - ((pos.y * height) / pos.h);
-
             f.addToPage(page, { x: pdfX, y: pdfY - 10, width: 60, height: 20 });
             f.setText("0");
             fields.push(f);
         }
 
-        // Script de Cálculo (Navegadores + Adobe)
+        // Script compatível com Chrome/Edge/Adobe
         const calculationJS = `
-            var v1 = Number(this.getField("c1").value) || 0;
-            var v2 = Number(this.getField("c2").value) || 0;
-            var v3 = Number(this.getField("c3").value) || 0;
-            event.value = (v1 * v2) + v3;
+            var v1 = this.getField("c1").value || 0;
+            var v2 = this.getField("c2").value || 0;
+            var v3 = this.getField("c3").value || 0;
+            event.value = (Number(v1) * Number(v2)) + Number(v3);
         `;
 
         const resField = fields[3];
 
-        // Ação de cálculo
+        // Gatilho de Cálculo
         resField.acroField.dict.set(
             PDFName.of('AA'),
             docContext.obj({
@@ -104,32 +106,32 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             })
         );
 
-        // CONFIGURAÇÃO DO FORMULÁRIO (CORRIGIDA)
+        // CONFIGURAÇÕES GLOBAIS DO FORMULÁRIO (Essencial para Chrome)
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
             const acroFormDict = docContext.lookup(acroForm);
             
-            // Ordem de cálculo (Essencial para Chrome/Edge)
+            // Ordem de cálculo (CO)
             acroFormDict.set(PDFName.of('CO'), docContext.obj([resField.ref]));
             
-            // CORREÇÃO DO ERRO ANTERIOR:
-            // Para setar True, passamos true direto para o .obj()
+            // NeedAppearances: Correção feita aqui (docContext.obj(true))
             acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
         }
 
         const finalPdfBytes = await pdfDoc.save();
         
+        // Trigger de Download
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_calculavel_corrigida.pdf";
+        a.download = "ficha_calculavel_T20.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
-            URL.revokeObjectURL(url);
             document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         }, 1000);
 
     } catch (err) {
