@@ -2,54 +2,35 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador Visual de Ficha RPG</title>
+    <title>Editor de PDF RPG - T20 Style</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; }
-        .controls { margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        
-        /* O container principal onde o PDF vai renderizar */
-        #pdf-container {
-            position: relative; /* Importante para os marcadores ficarem em cima do PDF */
-            display: inline-block;
-            border: 1px solid #ccc;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        }
-
-        /* Estilo das caixas que aparecem quando você clica */
-        .marker {
-            position: absolute;
-            background-color: rgba(52, 152, 219, 0.5);
-            border: 2px solid #2980b9;
-            color: white;
-            font-size: 12px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none; /* Deixa o clique passar através dele */
-        }
+        #pdf-container { position: relative; border: 2px solid #333; display: inline-block; cursor: crosshair; }
+        #pdf-canvas { display: block; }
+        .field-label { position: absolute; background: rgba(255, 255, 0, 0.5); border: 1px solid red; font-size: 10px; pointer-events: none; }
+        .controls { margin-bottom: 20px; padding: 15px; background: #f4f4f4; border-radius: 8px; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <h2>Criador de Ficha de RPG Automatizada</h2>
-        <p>1. Faça upload do PDF base.<br>
-           2. Clique no PDF para adicionar campos na seguinte ordem: <strong>Valor 1</strong>, <strong>Valor 2 (Multiplicador)</strong> e <strong>Resultado</strong>.<br>
-           3. Clique em Gerar PDF.</p>
-        
-        <input type="file" id="uploadPdf" accept="application/pdf">
-        <button id="gerarPdf" disabled>Gerar e Baixar PDF Calculável</button>
-        <button id="limpar" disabled>Limpar Cliques</button>
-    </div>
+<div class="controls">
+    <h3>Configurador de Campos Matemáticos</h3>
+    <input type="file" id="uploadPdf" accept="application/pdf">
+    <select id="fieldType">
+        <option value="campo1">Campo 1 (Multiplicador A)</option>
+        <option value="campo2">Campo 2 (Multiplicador B)</option>
+        <option value="campo3">Campo 3 (Soma Final)</option>
+        <option value="resultado">Campo 4 (RESULTADO)</option>
+    </select>
+    <button id="downloadBtn" style="background: green; color: white; padding: 10px;">Baixar PDF com Lógica</button>
+    <p><small>Clique no PDF para posicionar o campo selecionado acima.</small></p>
+</div>
 
-    <div id="pdf-container">
-        <canvas id="pdf-canvas"></canvas>
-    </div>
+<div id="pdf-container">
+    <canvas id="pdf-canvas"></canvas>
+</div>
 
-    <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
