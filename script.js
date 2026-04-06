@@ -1,64 +1,156 @@
-document.getElementById('uploadPdf').addEventListener('change', function() {
-    // Libera o botão de gerar quando o usuário envia um arquivo
+// Configuração do worker do PDF.js (Necessário para a biblioteca funcionar)
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+let pdfBytesOriginal = null; // Vai guardar o PDF cru
+let cliques = []; // Vai guardar as coordenadas de onde o usuário clicou
+let pdfEscala = 1.5; // Tamanho do zoom do PDF na tela
+let alturaOriginalPagina = 0; // Necessário para inverter o eixo Y depois
+
+const container = document.getElementById('pdf-container');
+const canvas = document.getElementById('pdf-canvas');
+const ctx = canvas.getContext('2d');
+
+// --- PASSO 1: LER E MOSTRAR O PDF NA TELA ---
+document.getElementById('uploadPdf').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Guarda os bytes para usar no pdf-lib depois
+    pdfBytesOriginal = await file.arrayBuffer(); 
+
+    // Carrega o PDF na tela usando pdf.js
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBytesOriginal });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1); // Pega a primeira página
+
+    const viewport = page.getViewport({ scale: pdfEscala });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    
+    // Precisamos saber a altura real do PDF (sem o zoom) para a conversão matemática
+    alturaOriginalPagina = viewport.height / pdfEscala;
+
+    // Desenha o PDF no canvas
+    const renderContext = { canvasContext: ctx, viewport: viewport };
+    await page.render(renderContext).promise;
+
+    // Libera os botões
     document.getElementById('gerarPdf').disabled = false;
+    document.getElementById('limpar').disabled = false;
 });
 
+// --- PASSO 2: CAPTURAR OS CLIQUES NA TELA ---
+container.addEventListener('mousedown', (e) => {
+    if (!pdfBytesOriginal) return;
+    if (cliques.length >= 3) {
+        alert("Você já colocou os 3 campos (Valor 1, Valor 2 e Resultado). Clique em Gerar ou Limpar.");
+        return;
+    }
+
+    // Pega a posição do clique relativa ao container
+    const rect = container.getBoundingClientRect();
+    const xTela = e.clientX - rect.left;
+    const yTela = e.clientY - rect.top;
+
+    // Tamanho padrão dos campos de formulário (na tela)
+    const larguraCampo = 50 * pdfEscala; 
+    const alturaCampo = 20 * pdfEscala;
+
+    // Cria o visual do marcador no HTML (só para o usuário ver onde clicou)
+    const marker = document.createElement('div');
+    marker.className = 'marker';
+    marker.style.left = `${xTela}px`;
+    marker.style.top = `${yTela}px`;
+    marker.style.width = `${larguraCampo}px`;
+    marker.style.height = `${alturaCampo}px`;
+
+    // Nomeia o marcador de acordo com a ordem do clique
+    const nomes = ['Valor 1', 'Valor 2', 'Total'];
+    marker.innerText = nomes[cliques.length];
+    container.appendChild(marker);
+
+    // Salva a coordenada (removendo a escala visual para o PDF-lib entender)
+    cliques.push({ 
+        x: xTela / pdfEscala, 
+        y: yTela / pdfEscala, 
+        width: 50, 
+        height: 20 
+    });
+});
+
+// Botão para limpar caso o usuário clique errado
+document.getElementById('limpar').addEventListener('click', () => {
+    cliques = [];
+    document.querySelectorAll('.marker').forEach(m => m.remove());
+});
+
+// --- PASSO 3: GERAR O PDF FINAL COM CÁLCULOS ---
 document.getElementById('gerarPdf').addEventListener('click', async () => {
-    const fileInput = document.getElementById('uploadPdf');
-    if (fileInput.files.length === 0) return alert('Faça o upload do PDF primeiro!');
+    if (cliques.length < 3) {
+        return alert('Por favor, clique no PDF para posicionar os 3 campos antes de gerar!');
+    }
 
-    const file = fileInput.files[0];
-    const arrayBuffer = await file.arrayBuffer();
-
-    // Carrega o PDF original que o usuário enviou
     const { PDFDocument } = PDFLib;
-    const pdfDoc = await PDFDocument.load(arrayBuffer);
-    
-    // Pega o formulário do PDF (ou cria um se não existir)
+    const pdfDoc = await PDFDocument.load(pdfBytesOriginal);
     const form = pdfDoc.getForm();
-    const page = pdfDoc.getPage(0); // Pega a primeira página
+    const page = pdfDoc.getPage(0);
 
-    // 1. Cria o campo "Força" (Exemplo)
-    const fieldForca = form.createTextField('forca');
-    fieldForca.addToPage(page, { x: 50, y: 700, width: 50, height: 30 });
-    fieldForca.setText('2'); // Valor inicial
+    // Função auxiliar para inverter o Eixo Y (A tela lê de cima pra baixo, o PDF de baixo pra cima)
+    const converterY = (yDaTela, alturaCampo) => {
+        return alturaOriginalPagina - yDaTela - alturaCampo;
+    };
 
-    // 2. Cria o campo "Multiplicador" (Exemplo)
-    const fieldMultiplicador = form.createTextField('multiplicador');
-    fieldMultiplicador.addToPage(page, { x: 150, y: 700, width: 50, height: 30 });
-    fieldMultiplicador.setText('3'); // Valor inicial
+    // 1. Cria Campo "Valor 1"
+    const coord1 = cliques[0];
+    const field1 = form.createTextField('valor1');
+    field1.addToPage(page, { 
+        x: coord1.x, 
+        y: converterY(coord1.y, coord1.height), 
+        width: coord1.width, 
+        height: coord1.height 
+    });
 
-    // 3. Cria o campo de "Total" (Onde o cálculo vai aparecer)
+    // 2. Cria Campo "Valor 2"
+    const coord2 = cliques[1];
+    const field2 = form.createTextField('valor2');
+    field2.addToPage(page, { 
+        x: coord2.x, 
+        y: converterY(coord2.y, coord2.height), 
+        width: coord2.width, 
+        height: coord2.height 
+    });
+
+    // 3. Cria Campo "Total"
+    const coord3 = cliques[2];
     const fieldTotal = form.createTextField('total');
-    fieldTotal.addToPage(page, { x: 250, y: 700, width: 50, height: 30 });
+    fieldTotal.addToPage(page, { 
+        x: coord3.x, 
+        y: converterY(coord3.y, coord3.height), 
+        width: coord3.width, 
+        height: coord3.height 
+    });
 
-    // --- A LÓGICA DE CÁLCULO DENTRO DO PDF ---
-    // O pdf-lib padrão não tem uma função simples como "fieldTotal.setFormula(...)". 
-    // Precisamos injetar o JavaScript do Acrobat PDF "na unha" usando dicionários do PDF.
-    
+    // --- INJETANDO A FÓRMULA MATEMÁTICA ---
     const acroField = fieldTotal.acroField;
     const docContext = pdfDoc.context;
 
-    // Criamos a ação de cálculo em JavaScript do PDF (Força * Multiplicador)
+    // JavaScript interno do PDF (Multiplica valor1 * valor2)
     const calculateAction = docContext.obj({
         Type: 'Action',
         S: 'JavaScript',
-        JS: 'var f = this.getField("forca").value; var m = this.getField("multiplicador").value; event.value = f * m;'
+        JS: 'var v1 = Number(this.getField("valor1").value) || 0; var v2 = Number(this.getField("valor2").value) || 0; event.value = v1 * v2;'
     });
 
-    // Injetamos a ação no dicionário de Ações Adicionais (/AA) do campo "total"
     acroField.dict.set(PDFLib.PDFName.of('AA'), docContext.obj({
-        C: calculateAction // 'C' significa Calculation (Cálculo)
+        C: calculateAction
     }));
-    // -----------------------------------------
+    // ----------------------------------------
 
-    // Salva o PDF modificado
+    // Salva e força o download
     const pdfBytes = await pdfDoc.save();
-
-    // Faz o download do arquivo pro usuário
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'Ficha_Calculada.pdf';
+    link.download = 'Ficha_Interativa_Calculada.pdf';
     link.click();
 });
