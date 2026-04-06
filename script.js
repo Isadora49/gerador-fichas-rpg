@@ -6,14 +6,14 @@ const labels = ["Campo 1 (X)", "Campo 2 (X)", "Campo 3 (+)", "Resultado (=)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO (Garante que o arquivo não "suma" da memória)
+// 1. CARREGAMENTO SEGURO
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
         const arrayBuffer = await file.arrayBuffer();
-        pdfOriginalBytes = arrayBuffer.slice(0); // Cópia de segurança
-        const previewBytes = arrayBuffer.slice(0); // Cópia para visualização
+        pdfOriginalBytes = arrayBuffer.slice(0); 
+        const previewBytes = arrayBuffer.slice(0);
 
         const loadingTask = pdfjsLib.getDocument({ data: previewBytes });
         const pdf = await loadingTask.promise;
@@ -34,7 +34,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     }
 });
 
-// 2. MARCAÇÃO DOS PONTOS
+// 2. MARCAÇÃO DE CAMPOS
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     if (clicks.length >= 4 || !pdfOriginalBytes) return;
     const rect = e.target.getBoundingClientRect();
@@ -49,10 +49,9 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     marker.style.position = 'absolute';
     marker.style.background = '#e74c3c';
     marker.style.color = 'white';
-    marker.style.padding = '4px 8px';
+    marker.style.padding = '4px';
     marker.style.borderRadius = '4px';
-    marker.style.zIndex = "1000";
-    marker.style.transform = "translate(-50%, -50%)";
+    marker.style.zIndex = "100";
     marker.innerText = labels[clicks.length - 1];
     document.body.appendChild(marker);
 
@@ -64,10 +63,9 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. GERAÇÃO DO PDF COM CÁLCULO COMPATÍVEL
+// 3. DOWNLOAD + CÁLCULO (CHROME/EDGE COMPATÍVEL)
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
-        // Criar documento a partir da cópia salva
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
@@ -77,50 +75,77 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const fieldNames = ['c1', 'c2', 'c3', 'res'];
         const fields = [];
 
-        // Criar os 4 campos
         for (let i = 0; i < 4; i++) {
-            const pos = clicks[i];
             const f = form.createTextField(fieldNames[i]);
+            const pos = clicks[i];
             const pdfX = (pos.x * width) / pos.w;
             const pdfY = height - ((pos.y * height) / pos.h);
-            
+
             f.addToPage(page, { x: pdfX, y: pdfY - 10, width: 60, height: 20 });
             f.setText("0");
             fields.push(f);
         }
 
-        // Lógica de cálculo ultra-compatível para Chrome/Edge
+        // LÓGICA DE CÁLCULO (Sintaxe robusta para navegadores)
         const calculationJS = `
             var v1 = this.getField("c1").value;
             var v2 = this.getField("c2").value;
             var v3 = this.getField("c3").value;
-            var n1 = v1 === "" ? 0 : Number(v1);
-            var n2 = v2 === "" ? 0 : Number(v2);
-            var n3 = v3 === "" ? 0 : Number(v3);
+            var n1 = isNaN(parseFloat(v1)) ? 0 : parseFloat(v1);
+            var n2 = isNaN(parseFloat(v2)) ? 0 : parseFloat(v2);
+            var n3 = isNaN(parseFloat(v3)) ? 0 : parseFloat(v3);
             event.value = (n1 * n2) + n3;
         `;
 
         const resField = fields[3];
 
-        // Injetar o script de cálculo no campo de resultado
+        // INJEÇÃO MANUAL DO GATILHO DE CÁLCULO
+        // Criamos o objeto de ação JavaScript
+        const jsAction = docContext.obj({
+            Type: 'Action',
+            S: 'JavaScript',
+            JS: PDFString.of(calculationJS),
+        });
+
+        // Adicionamos ao dicionário AA (Additional Actions) do campo de resultado
         resField.acroField.dict.set(
             PDFName.of('AA'),
             docContext.obj({
-                C: docContext.obj({
-                    Type: 'Action',
-                    S: 'JavaScript',
-                    JS: calculationJS
-                })
+                C: jsAction // 'C' para Calculate
             })
         );
 
-        // CONFIGURAR ORDEM DE CÁLCULO (O que faz o Chrome funcionar)
-        // Pegamos o dicionário do formulário e dizemos: "Calcule o campo 'res'"
-        const acroForm = form.acroForm;
-        acroForm.dict.set(
-            PDFName.of('CO'), 
-            docContext.obj([resField.ref]) // Ordem de cálculo aponta para o ID do campo 'res'
-        );
+        // CONFIGURAÇÃO DO FORMULÁRIO (Essencial para o Chrome ativar o JS)
+        const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+        if (acroForm) {
+            const acroFormDict = docContext.lookup(acroForm);
+            
+            // Define a Ordem de Cálculo (CO) - O navegador precisa saber quem calcular
+            acroFormDict.set(PDFName.of('CO'), docContext.obj([resField.ref]));
+            
+            // NeedAppearances ajuda o Chrome a renderizar os valores novos
+            acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
+        }
 
-        // Forçar o PDF a mostrar os valores (ajuda na renderização do navegador)
-        acroForm
+        const finalPdfBytes = await pdfDoc.save();
+        
+        // EXECUÇÃO DO DOWNLOAD
+        const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "ficha_rpg_calculavel.pdf";
+        document.body.appendChild(a);
+        a.click();
+        
+        // Limpeza de memória
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 1000);
+
+    } catch (err) {
+        console.error(err);
+        alert("Erro na geração: " + err.message);
+    }
+});
