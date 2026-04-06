@@ -1,4 +1,4 @@
-const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
+const { PDFDocument, PDFName, PDFBool } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
@@ -6,7 +6,7 @@ const labels = ["Campo 1 (X)", "Campo 2 (X)", "Campo 3 (+)", "Resultado (=)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO (Mantido para estabilidade)
+// 1. CARREGAMENTO (Com cópia de segurança para não dar erro de memória)
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -32,7 +32,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     }
 });
 
-// 2. MARCAÇÃO (Mantido)
+// 2. MARCAÇÃO DE CLIQUES
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     if (clicks.length >= 4 || !pdfOriginalBytes) return;
     const rect = e.target.getBoundingClientRect();
@@ -52,86 +52,16 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     marker.innerText = labels[clicks.length - 1];
     document.body.appendChild(marker);
     if (clicks.length === 4) {
-        document.getElementById('status').innerText = "Pronto!";
+        document.getElementById('status').innerText = "Pronto para baixar!";
         document.getElementById('btnDownload').disabled = false;
     } else {
         document.getElementById('status').innerText = "Clique para: " + labels[clicks.length];
     }
 });
 
-// 3. DOWNLOAD COM COMPATIBILIDADE PARA NAVEGADORES
+// 3. DOWNLOAD COM CÁLCULO COMPATÍVEL (Chrome, Edge, Adobe)
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
+        // Criar o PDF usando o clone guardado
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
-        const form = pdfDoc.getForm();
-        const page = pdfDoc.getPage(0);
-        const { width, height } = page.getSize();
-        const docContext = pdfDoc.context;
-
-        const fieldNames = ['c1', 'c2', 'c3', 'res'];
-        const fields = [];
-
-        for (let i = 0; i < 4; i++) {
-            const pos = clicks[i];
-            const f = form.createTextField(fieldNames[i]);
-            const pdfX = (pos.x * width) / pos.w;
-            const pdfY = height - ((pos.y * height) / pos.h);
-
-            f.addToPage(page, { x: pdfX, y: pdfY - 10, width: 60, height: 20 });
-            f.setText("0");
-            fields.push(f);
-        }
-
-        // SCRIPT OTIMIZADO PARA CHROME/EDGE
-        // Usamos uma lógica que verifica se o valor é nulo para evitar erros de NaN no navegador
-        const calculationJS = `
-            var f1 = this.getField("c1").value;
-            var f2 = this.getField("c2").value;
-            var f3 = this.getField("c3").value;
-            var n1 = (f1 == "") ? 0 : Number(f1);
-            var n2 = (f2 == "") ? 0 : Number(f2);
-            var n3 = (f3 == "") ? 0 : Number(f3);
-            event.value = (n1 * n2) + n3;
-        `;
-
-        const resField = fields[3];
-
-        // 1. Define a ação de cálculo no campo de resultado
-        resField.acroField.dict.set(
-            PDFName.of('AA'),
-            docContext.obj({
-                C: docContext.obj({
-                    Type: 'Action',
-                    S: 'JavaScript',
-                    JS: calculationJS
-                })
-            })
-        );
-
-        // 2. CONFIGURAÇÃO DO ACROFORM PARA NAVEGADORES
-        const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-        const acroFormDict = docContext.lookup(acroForm);
-
-        // Define a Ordem de Cálculo (CO) explicitamente
-        // Isso é o que faz o Chrome "acordar" para o cálculo
-        acroFormDict.set(PDFName.of('CO'), docContext.obj([resField.ref]));
-
-        // Ativa sinalizadores de visualização (ajuda no rendering do Chrome)
-        acroFormDict.set(PDFName.of('NeedAppearances'), docContext.boolean(true));
-
-        const finalPdfBytes = await pdfDoc.save();
-        
-        const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "ficha_RPG_FullCompat.pdf";
-        a.click();
-        
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-    } catch (err) {
-        console.error(err);
-        alert("Erro: " + err.message);
-    }
-});
+        const
