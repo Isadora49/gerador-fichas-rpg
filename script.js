@@ -1,33 +1,39 @@
-const { PDFDocument, PDFName, PDFString } = PDFLib;
+// Alias para facilitar o uso da biblioteca
+const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
+
 let pdfBytes = null;
 let clicks = [];
-const labels = ["C1 (x)", "C2 (x)", "C3 (+)", "RESULTADO (=)"];
+const labels = ["Campo 1 (X)", "Campo 2 (X)", "Campo 3 (+)", "Resultado (=)"];
 
-// Configura o Worker do PDF.js
+// Configura o worker do PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. Carregar e Renderizar o PDF
+// 1. Carregamento do Arquivo
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    pdfBytes = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
-    const pdf = await loadingTask.promise;
-    const page = await pdf.getPage(1);
+    try {
+        pdfBytes = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+        
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.getElementById('pdf-canvas');
+        const context = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-    const viewport = page.getViewport({ scale: 1.2 });
-    const canvas = document.getElementById('pdf-canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-
-    await page.render({ canvasContext: context, viewport: viewport }).promise;
-    document.getElementById('status').innerText = "Clique para: " + labels[0];
-    clicks = []; // Reseta cliques ao subir novo PDF
+        await page.render({ canvasContext: context, viewport: viewport }).promise;
+        document.getElementById('status').innerText = "Clique para: " + labels[0];
+        clicks = []; // Reseta cliques ao subir novo PDF
+    } catch (err) {
+        alert("Erro ao carregar PDF: " + err.message);
+    }
 });
 
-// 2. Marcar Pontos
+// 2. Marcação dos Campos
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     if (clicks.length >= 4) return;
 
@@ -35,9 +41,9 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    clicks.push({ x, y, cw: rect.width, ch: rect.height });
+    clicks.push({ x, y, w: rect.width, h: rect.height });
 
-    // Criar marcador visual
+    // Criar marca visual
     const marker = document.createElement('div');
     marker.className = 'marker';
     marker.style.left = e.pageX + 'px';
@@ -53,66 +59,74 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. Gerar PDF e Calcular (O CORAÇÃO DO PROBLEMA)
+// 3. Geração do PDF (Botão Baixar)
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
+        if (!window.PDFLib) throw new Error("Biblioteca PDF-Lib não carregada!");
+
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
         const { width, height } = page.getSize();
 
-        const names = ['c1', 'c2', 'c3', 'res'];
+        const fieldNames = ['c1', 'c2', 'c3', 'res'];
         const fields = [];
 
         for (let i = 0; i < 4; i++) {
-            const f = form.createTextField(names[i]);
-            // Ajuste preciso de coordenadas
-            const pdfX = (clicks[i].x * width) / clicks[i].cw;
-            const pdfY = height - (clicks[i].y * height) / clicks[i].ch;
+            const pos = clicks[i];
+            const f = form.createTextField(fieldNames[i]);
             
-            f.addToPage(page, { x: pdfX, y: pdfY, width: 50, height: 20 });
+            // Converte coordenada do clique para escala do PDF
+            const pdfX = (pos.x * width) / pos.w;
+            const pdfY = height - ((pos.y * height) / pos.h);
+
+            f.addToPage(page, { 
+                x: pdfX, 
+                y: pdfY - 10, 
+                width: 50, 
+                height: 20 
+            });
             f.setText("0");
             fields.push(f);
         }
 
-        // Lógica de Cálculo (JS do Acrobat)
-        const calculationJS = `
-            var v1 = Number(this.getField("c1").value);
-            var v2 = Number(this.getField("c2").value);
-            var v3 = Number(this.getField("c3").value);
+        // Lógica de Cálculo Interna: (C1 * C2) + C3 = Res
+        const resField = fields[3];
+        const jsAction = `
+            var v1 = Number(this.getField("c1").value) || 0;
+            var v2 = Number(this.getField("c2").value) || 0;
+            var v3 = Number(this.getField("c3").value) || 0;
             event.value = (v1 * v2) + v3;
         `;
 
-        // Injetando a ação de cálculo no campo de resultado
-        const resField = fields[3].acroField.dict;
+        // Injeção do Script de Cálculo
         const docContext = pdfDoc.context;
-        
-        const actionDict = docContext.obj({
-            Type: 'Action',
-            S: 'JavaScript',
-            JS: calculationJS
-        });
+        resField.acroField.dict.set(
+            PDFName.of('AA'),
+            docContext.obj({
+                C: docContext.obj({
+                    Type: 'Action',
+                    S: 'JavaScript',
+                    JS: jsAction
+                })
+            })
+        );
 
-        resField.set(PDFName.of('AA'), docContext.obj({
-            C: actionDict
-        }));
-
-        // Salvar e Forçar Download
         const finalPdfBytes = await pdfDoc.save();
+        
+        // Trigger de Download
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_rpg_automatizada.pdf";
+        a.download = "ficha_calculavel_rpg.pdf";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        
-        alert("Download concluído! Teste os campos no seu leitor de PDF.");
+
     } catch (err) {
         console.error(err);
-        alert("Erro ao gerar PDF: " + err.message);
+        alert("Erro ao gerar o PDF: " + err.message);
     }
 });
