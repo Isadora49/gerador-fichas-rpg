@@ -2,33 +2,34 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de PDF RPG - T20 Style</title>
+    <title>Editor de Fichas RPG - T20 Style</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        #pdf-container { position: relative; border: 2px solid #333; display: inline-block; cursor: crosshair; }
-        #pdf-canvas { display: block; }
-        .field-label { position: absolute; background: rgba(255, 255, 0, 0.5); border: 1px solid red; font-size: 10px; pointer-events: none; }
-        .controls { margin-bottom: 20px; padding: 15px; background: #f4f4f4; border-radius: 8px; }
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #2c2c2c; color: white; }
+        #toolbar { padding: 15px; background: #1a1a1a; display: flex; gap: 10px; align-items: center; border-bottom: 2px solid #e74c3c; }
+        #viewer-container { flex: 1; overflow: auto; position: relative; display: flex; justify-content: center; padding: 20px; }
+        #pdf-canvas { border: 5px solid #555; cursor: crosshair; }
+        .field-label { position: absolute; background: rgba(231, 76, 60, 0.7); color: white; padding: 2px 5px; font-size: 10px; pointer-events: none; border-radius: 3px; }
+        button { cursor: pointer; padding: 8px 15px; border: none; border-radius: 4px; background: #e74c3c; color: white; font-weight: bold; }
+        button:disabled { background: #555; }
+        input[type="file"] { color: #ccc; }
     </style>
 </head>
 <body>
 
-<div class="controls">
-    <h3>Configurador de Campos Matemáticos</h3>
+<div id="toolbar">
     <input type="file" id="uploadPdf" accept="application/pdf">
-    <select id="fieldType">
-        <option value="campo1">Campo 1 (Multiplicador A)</option>
-        <option value="campo2">Campo 2 (Multiplicador B)</option>
-        <option value="campo3">Campo 3 (Soma Final)</option>
-        <option value="resultado">Campo 4 (RESULTADO)</option>
-    </select>
-    <button id="downloadBtn" style="background: green; color: white; padding: 10px;">Baixar PDF com Lógica</button>
-    <p><small>Clique no PDF para posicionar o campo selecionado acima.</small></p>
+    <span id="status">Aguardando PDF...</span>
+    <button id="btnDownload" disabled>Baixar PDF Automatizado</button>
+    <div style="margin-left: 20px; font-size: 0.9em; color: #aaa;">
+        Clique no PDF para marcar: <b>Campo 1 → 2 → 3 → Resultado</b>
+    </div>
 </div>
 
-<div id="pdf-container">
+<div id="viewer-container">
     <canvas id="pdf-canvas"></canvas>
+    <div id="overlay-fields"></div>
 </div>
 
 <script src="script.js"></script>
