@@ -2,7 +2,7 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
-const labels = ["C1 (Base)", "C2 (Nívl)", "C3 (Dado)", "C4 (Total)"];
+const labels = ["C1 (Base)", "C2 (Nível)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
@@ -96,7 +96,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
     'else if (c2 >= 20) { dText = "1d10"; dNum = 10; }',
     'else if (c2 >= 15) { dText = "1d8"; dNum = 8; }',
     'else if (c2 >= 10) { dText = "1d6"; dNum = 6; }',
-    'else { dText = "1d4"; dNum = 4; }',
+    'else if (c2 <= 5) { dText = "1d4"; dNum = 4; }',
 
     // Atualiza campo 3
     'this.getField("c3").value = dText;',
