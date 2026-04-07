@@ -3,8 +3,8 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 let pdfOriginalBytes = null; 
 let clicks = [];
 const labels = [
-    "C1 (Base A/B/C)", "C2 (Nível A)", "C3 (Dado A)", "C4 (Total A)", 
-    "C5 (Nível B)", "C6 (Extra B)", "C7 (Total B)", "C8 (Anotação)"
+    "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
+    "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Extra)"
 ];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -71,7 +71,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const { width, height } = page.getSize();
         const docContext = pdfDoc.context;
 
-        const fieldNames = ['c1', 'c2', 'c3', 'res', 'c5', 'c6', 'res_b', 'c8'];
+        const fieldNames = ['c1', 'c2', 'c3', 'res', 'c5', 'c6', 'res2', 'c8'];
         const fields = [];
 
         for (let i = 0; i < 8; i++) {
@@ -82,7 +82,8 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
                 f.select('A');
             } else {
                 f = form.createTextField(fieldNames[i]);
-                f.setText(i === 2 ? "1d4" : "0");
+                // Inicializa C3 e C6 com "1d4"
+                f.setText((i === 2 || i === 5) ? "1d4" : "0");
             }
             const pos = clicks[i];
             const pdfX = (pos.x * width) / pos.w;
@@ -94,26 +95,33 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         // MOTOR DE CÁLCULO DUPLO
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
-            'var c1 = (escolha == "A") ? 8 : 2;',
+            'var valBase = (escolha == "A") ? 8 : 2;',
             
-            // --- BLOCO A (C1, C2, C3, C4) ---
-            'var c2 = Number(this.getField("c2").value) || 0;',
-            'var dText = ""; var dNum = 0;',
-            'if (c2 >= 51) { dText = "1d100"; dNum = 100; }',
-            'else if (c2 >= 27) { dText = "1d50"; dNum = 50; }',
-            'else if (c2 >= 26) { dText = "1d20"; dNum = 20; }',
-            'else if (c2 >= 21) { dText = "1d12"; dNum = 12; }',
-            'else if (c2 >= 16) { dText = "1d10"; dNum = 10; }',
-            'else if (c2 >= 11) { dText = "1d8"; dNum = 8; }',
-            'else if (c2 >= 6) { dText = "1d6"; dNum = 6; }',
-            'else { dText = "1d4"; dNum = 4; }',
-            'this.getField("c3").value = dText;',
-            'this.getField("res").value = (c1 * c2) + dNum;',
+            // --- BLOCO 1 (C2 influencia C3 e gera C4/res) ---
+            'var n1 = Number(this.getField("c2").value) || 0;',
+            'var d1T = "1d4"; var d1N = 4;',
+            'if (n1 >= 51) { d1T = "1d100"; d1N = 100; }',
+            'else if (n1 >= 27) { d1T = "1d50"; d1N = 50; }',
+            'else if (n1 >= 26) { d1T = "1d20"; d1N = 20; }',
+            'else if (n1 >= 21) { d1T = "1d12"; d1N = 12; }',
+            'else if (n1 >= 16) { d1T = "1d10"; d1N = 10; }',
+            'else if (n1 >= 11) { d1T = "1d8"; d1N = 8; }',
+            'else if (n1 >= 6) { d1T = "1d6"; d1N = 6; }',
+            'this.getField("c3").value = d1T;',
+            'this.getField("res").value = (valBase * n1) + d1N;',
 
-            // --- BLOCO B (C1 * C5 + C6 = C7) ---
-            'var c5 = Number(this.getField("c5").value) || 0;',
-            'var c6 = Number(this.getField("c6").value) || 0;',
-            'this.getField("res_b").value = (c1 * c5) + c6;'
+            // --- BLOCO 2 (C5 influencia C6 e gera C7/res2) ---
+            'var n2 = Number(this.getField("c5").value) || 0;',
+            'var d2T = "1d4"; var d2N = 4;',
+            'if (n2 >= 51) { d2T = "1d100"; d2N = 100; }',
+            'else if (n2 >= 27) { d2T = "1d50"; d2N = 50; }',
+            'else if (n2 >= 26) { d2T = "1d20"; d2N = 20; }',
+            'else if (n2 >= 21) { d2T = "1d12"; d2N = 12; }',
+            'else if (n2 >= 16) { d2T = "1d10"; d2N = 10; }',
+            'else if (n2 >= 11) { d2T = "1d8"; d2N = 8; }',
+            'else if (n2 >= 6) { d2T = "1d6"; d2N = 6; }',
+            'this.getField("c6").value = d2T;',
+            'this.getField("res2").value = (valBase * n2) + d2N;'
         ].join('\n');
 
         const action = docContext.obj({
@@ -122,11 +130,10 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        // Ativamos o cálculo para todos os campos envolvidos na conta
-        fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action })); // C1
-        fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // C2
-        fields[4].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // C5
-        fields[5].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // C6
+        // Gatilhos: O cálculo roda se mudar C1 (lista), C2 (nível 1) ou C5 (nível 2)
+        fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action })); 
+        fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
+        fields[4].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
 
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
@@ -139,10 +146,8 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_RPG_blocos_calculados.pdf";
+        a.download = "ficha_RPG_dupla_logica.pdf";
         a.click();
-        setTimeout(() => window.URL.revokeObjectURL(url), 1500);
-
     } catch (err) {
         alert("Erro técnico: " + err.message);
     }
