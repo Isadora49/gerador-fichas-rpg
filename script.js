@@ -2,12 +2,11 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
-// Expandido para 16 rótulos
 const labels = [
     "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
     "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)",
-    "C9 (Extra)", "C10 (Extra)", "C11 (Extra)", "C12 (Extra)",
-    "C13 (Extra)", "C14 (Extra)", "C15 (Extra)", "C16 (Extra)"
+    "C9 (Nível 3)", "C10 (Dado 3)", "C11 (Nível 4)", "C12 (Dado 4)",
+    "C13 (Nível 5)", "C14 (Dado 5)", "C15 (Nível 6)", "C16 (Dado 6)"
 ];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -40,14 +39,11 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
 
 // 2. MARCAÇÃO
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
-    // Aumentado o limite para 16 cliques
     if (clicks.length >= 16 || !pdfOriginalBytes) return;
-    
     const rect = e.target.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     clicks.push({ x, y, w: rect.width, h: rect.height });
-    
     const marker = document.createElement('div');
     marker.className = 'marker';
     marker.style.left = e.pageX + 'px';
@@ -60,8 +56,6 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     marker.style.zIndex = "100";
     marker.innerText = labels[clicks.length - 1];
     document.body.appendChild(marker);
-    
-    // Checagem de conclusão alterada para 16
     if (clicks.length === 16) {
         document.getElementById('status').innerText = "Pronto!";
         document.getElementById('btnDownload').disabled = false;
@@ -79,14 +73,12 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const { width, height } = page.getSize();
         const docContext = pdfDoc.context;
 
-        // Adicionado os campos c9 a c16 na lista de nomes
         const fieldNames = [
             'c1', 'c2', 'c3', 'res', 'c5', 'c6', 'res2', 'c8',
             'c9', 'c10', 'c11', 'c12', 'c13', 'c14', 'c15', 'c16'
         ];
         const fields = [];
 
-        // O laço agora vai até 16
         for (let i = 0; i < 16; i++) {
             let f;
             if (i === 0) {
@@ -95,7 +87,9 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
                 f.select('A');
             } else {
                 f = form.createTextField(fieldNames[i]);
-                f.setText((i === 2 || i === 5) ? "1d4" : "0");
+                // Inicializa os campos de "Dado" com 1d4
+                const dadosIndices = [2, 5, 9, 11, 13, 15]; // Índices visuais (c3, c6, c10, c12, c14, c16)
+                f.setText(dadosIndices.includes(i) ? "1d4" : "0");
             }
             const pos = clicks[i];
             const pdfX = (pos.x * width) / pos.w;
@@ -104,42 +98,43 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             fields.push(f);
         }
 
-        // MOTOR DE CÁLCULO (A lógica dos 8 primeiros continua intacta)
+        // MOTOR DE CÁLCULO EXPANDIDO
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
-            
             'if (escolha == "A") { valBase1 = 8; valBase2 = 2; valBase3 = 2; }',
             'else if (escolha == "B") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
             'else if (escolha == "C") { valBase1 = 4; valBase2 = 4; valBase3 = 2; }',
             
-            // --- BLOCO 1 ---
+            // Função interna para processar a troca de dados (Lógica do Campo 3)
+            'function getDado(nivel) {',
+            '  if (nivel >= 51) return "1d100";',
+            '  if (nivel >= 27) return "1d50";',
+            '  if (nivel >= 26) return "1d20";',
+            '  if (nivel >= 21) return "1d12";',
+            '  if (nivel >= 16) return "1d10";',
+            '  if (nivel >= 11) return "1d8";',
+            '  if (nivel >= 6) return "1d6";',
+            '  return "1d4";',
+            '}',
+
+            // Lógica Original (Bloco 1 e 2)
             'var n1 = Number(this.getField("c2").value) || 0;',
-            'var d1T = "1d4"; var d1N = 4;',
-            'if (n1 >= 51) { d1T = "1d100"; d1N = 100; }',
-            'else if (n1 >= 27) { d1T = "1d50"; d1N = 50; }',
-            'else if (n1 >= 26) { d1T = "1d20"; d1N = 20; }',
-            'else if (n1 >= 21) { d1T = "1d12"; d1N = 12; }',
-            'else if (n1 >= 16) { d1T = "1d10"; d1N = 10; }',
-            'else if (n1 >= 11) { d1T = "1d8"; d1N = 8; }',
-            'else if (n1 >= 6) { d1T = "1d6"; d1N = 6; }',
-            'this.getField("c3").value = d1T;',
-            
+            'this.getField("c3").value = getDado(n1);',
+            'var d1N = (n1 >= 51)?100:(n1 >= 27)?50:(n1 >= 26)?20:(n1 >= 21)?12:(n1 >= 16)?10:(n1 >= 11)?8:(n1 >= 6)?6:4;',
             'this.getField("res").value = (valBase1 * n1) + d1N;',
             'this.getField("c8").value = (valBase3 * n1) + d1N;',
 
-            // --- BLOCO 2 ---
             'var n2 = Number(this.getField("c5").value) || 0;',
-            'var d2T = "1d4"; var d2N = 4;',
-            'if (n2 >= 51) { d2T = "1d100"; d2N = 100; }',
-            'else if (n2 >= 27) { d2T = "1d50"; d2N = 50; }',
-            'else if (n2 >= 26) { d2T = "1d20"; d2N = 20; }',
-            'else if (n2 >= 21) { d2T = "1d12"; d2N = 12; }',
-            'else if (n2 >= 16) { d2T = "1d10"; d2N = 10; }',
-            'else if (n2 >= 11) { d2T = "1d8"; d2N = 8; }',
-            'else if (n2 >= 6) { d2T = "1d6"; d2N = 6; }',
-            'this.getField("c6").value = d2T;',
-            'this.getField("res2").value = (valBase2 * n2) + d2N;'
+            'this.getField("c6").value = getDado(n2);',
+            'var d2N = (n2 >= 51)?100:(n2 >= 27)?50:(n2 >= 26)?20:(n2 >= 21)?12:(n2 >= 16)?10:(n2 >= 11)?8:(n2 >= 6)?6:4;',
+            'this.getField("res2").value = (valBase2 * n2) + d2N;',
+
+            // NOVAS LÓGICAS (Campos 9 até 16)
+            'this.getField("c10").value = getDado(Number(this.getField("c9").value) || 0);',
+            'this.getField("c12").value = getDado(Number(this.getField("c11").value) || 0);',
+            'this.getField("c14").value = getDado(Number(this.getField("c13").value) || 0);',
+            'this.getField("c16").value = getDado(Number(this.getField("c15").value) || 0);'
         ].join('\n');
 
         const action = docContext.obj({
@@ -148,9 +143,11 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action })); 
-        fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
-        fields[4].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
+        // Adicionando Gatilhos para todos os campos que influenciam outros
+        const triggerIndices = [0, 1, 4, 8, 10, 12, 14]; 
+        triggerIndices.forEach(idx => {
+            fields[idx].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action }));
+        });
 
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
@@ -163,7 +160,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_RPG_16_campos.pdf";
+        a.download = "ficha_RPG_avancada.pdf";
         a.click();
     } catch (err) {
         alert("Erro técnico: " + err.message);
