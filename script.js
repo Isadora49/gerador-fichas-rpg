@@ -89,14 +89,14 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
     'var dNum = 0;',
 
     // ORDEM IMPORTA (do maior para o menor)
-    'if (c2 >= 51) { dText = "1d100"; dNum = 100; }',
-    'else if (c2 == 50) { dText = "1d50"; dNum = 50; }',
-    'else if (c2 <= 35) { dText = "1d20"; dNum = 20; }',
-    'else if (c2 <= 25) { dText = "1d12"; dNum = 12; }',
-    'else if (c2 <= 20) { dText = "1d10"; dNum = 10; }',
-    'else if (c2 <= 15) { dText = "1d8"; dNum = 8; }',
-    'else if (c2 <= 10) { dText = "1d6"; dNum = 6; }',
-    'else if (c2 <= 5) { dText = "1d4"; dNum = 4; }',
+   'if (c2 >= 51) { dText = "1d100"; dNum = 100; }',
+    'else if (c2 >= 27 && c2 <= 50) { dText = "1d50"; dNum = 50; }',
+    'else if (c2 >= 26 && c2 <= 35) { dText = "1d20"; dNum = 20; }',
+    'else if (c2 >= 21 && c2 <= 25) { dText = "1d12"; dNum = 12; }',
+    'else if (c2 >= 16 && c2 <= 20) { dText = "1d10"; dNum = 10; }',
+    'else if (c2 >= 11 && c2 <= 15) { dText = "1d8"; dNum = 8; }',
+    'else if (c2 >= 6 && c2 <= 10) { dText = "1d6"; dNum = 6; }',
+    'else { dText = "1d4"; dNum = 4; }',
 
     // Atualiza campo 3
     'this.getField("c3").value = dText;',
