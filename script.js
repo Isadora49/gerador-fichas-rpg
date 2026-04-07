@@ -2,7 +2,8 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
-const labels = ["C1 (Base)", "C2 (Nívl)", "C3 (Dado)", "C4 (Total)"];
+// Mudei o rótulo para você saber que é uma lista
+const labels = ["C1 (Lista A/B/C)", "C2 (Nível)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
@@ -72,49 +73,63 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const fields = [];
 
         for (let i = 0; i < 4; i++) {
-            const f = form.createTextField(fieldNames[i]);
+            let f;
+            // SE FOR O CAMPO 1 (i === 0), CRIA UMA CAIXA DE LISTA
+            if (i === 0) {
+                f = form.createDropdown(fieldNames[i]);
+                f.addOptions(['A', 'B', 'C']); // Adiciona as opções
+                f.select('A'); // Define 'A' como padrão
+            } else {
+                // SE FOREM OS OUTROS CAMPOS, CRIA CAMPO DE TEXTO NORMAL
+                f = form.createTextField(fieldNames[i]);
+                f.setText(i === 2 ? "1d4" : "0");
+            }
+
             const pos = clicks[i];
             const pdfX = (pos.x * width) / pos.w;
             const pdfY = height - ((pos.y * height) / pos.h);
             f.addToPage(page, { x: pdfX, y: pdfY - 10, width: 60, height: 20 });
-            f.setText(i === 2 ? "1d4" : "0");
             fields.push(f);
         }
 
-        // SCRIPT UNIFICADO: O Campo 2 agora controla o Campo 3 e o Campo 4
-       const scriptMotor = [
-    'var c1 = Number(this.getField("c1").value) || 0;',
-    'var c2 = Number(this.getField("c2").value) || 0;',
-    'var dText = "";',
-    'var dNum = 0;',
+        // SCRIPT UNIFICADO: Lógica da Letra -> Número inclusa
+        const scriptMotor = [
+            'var escolha = this.getField("c1").value;',
+            'var c1 = 0;',
+            'if (escolha == "A") { c1 = 8; }',
+            'else if (escolha == "B") { c1 = 2; }',
+            'else if (escolha == "C") { c1 = 2; }',
+            
+            'var c2 = Number(this.getField("c2").value) || 0;',
+            'var dText = "";',
+            'var dNum = 0;',
 
-    // ORDEM IMPORTA (do maior para o menor)
-   'if (c2 >= 51) { dText = "1d100"; dNum = 100; }',
-    'else if (c2 >= 27 && c2 <= 50) { dText = "1d50"; dNum = 50; }',
-    'else if (c2 >= 26 && c2 <= 35) { dText = "1d20"; dNum = 20; }',
-    'else if (c2 >= 21 && c2 <= 25) { dText = "1d12"; dNum = 12; }',
-    'else if (c2 >= 16 && c2 <= 20) { dText = "1d10"; dNum = 10; }',
-    'else if (c2 >= 11 && c2 <= 15) { dText = "1d8"; dNum = 8; }',
-    'else if (c2 >= 6 && c2 <= 10) { dText = "1d6"; dNum = 6; }',
-    'else { dText = "1d4"; dNum = 4; }',
+            // ORDEM IMPORTA (do maior para o menor) - Mantive a sua lógica exata
+            'if (c2 >= 51) { dText = "1d100"; dNum = 100; }',
+            'else if (c2 >= 27 && c2 <= 50) { dText = "1d50"; dNum = 50; }',
+            'else if (c2 >= 26 && c2 <= 35) { dText = "1d20"; dNum = 20; }', // Nota: Tem uma sobreposição de números aqui no 26/27 da sua lógica, mas mantive como você pediu!
+            'else if (c2 >= 21 && c2 <= 25) { dText = "1d12"; dNum = 12; }',
+            'else if (c2 >= 16 && c2 <= 20) { dText = "1d10"; dNum = 10; }',
+            'else if (c2 >= 11 && c2 <= 15) { dText = "1d8"; dNum = 8; }',
+            'else if (c2 >= 6 && c2 <= 10) { dText = "1d6"; dNum = 6; }',
+            'else { dText = "1d4"; dNum = 4; }',
 
-    // Atualiza campo 3
-    'this.getField("c3").value = dText;',
+            // Atualiza campo 3
+            'this.getField("c3").value = dText;',
 
-    // Calcula resultado
-    'this.getField("res").value = (c1 * c2) + dNum;'
-].join('\n');
+            // Calcula resultado
+            'this.getField("res").value = (c1 * c2) + dNum;'
+        ].join('\n');
 
-        // Injetamos a lógica no "OnBlur" ou "Calculate" dos campos de entrada
-        // Assim, qualquer mudança em C1 ou C2 dispara a atualização total
         const action = docContext.obj({
             Type: 'Action',
             S: 'JavaScript',
             JS: PDFString.of(scriptMotor)
         });
 
-        fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // Ao digitar no C1
-        fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // Ao digitar no C2
+        // Adicionando 'V' (Validate) junto com 'K' para garantir que a mudança na caixa de lista ative a conta
+        fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action })); 
+        fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
 
         // Configuração final do PDF
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
