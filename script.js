@@ -6,7 +6,7 @@ const labels = ["C1 (Base)", "C2 (Nível)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO (Proteção de memória)
+// 1. CARREGAMENTO (Clone de ArrayBuffer para evitar erro de download)
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -28,7 +28,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         document.getElementById('status').innerText = "Clique para: " + labels[0];
         document.getElementById('btnDownload').disabled = true;
     } catch (err) {
-        alert("Erro: " + err.message);
+        alert("Erro no PDF: " + err.message);
     }
 });
 
@@ -59,7 +59,7 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. LOGICA DO PDF E DOWNLOAD
+// 3. LOGICA E DOWNLOAD
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
@@ -81,46 +81,37 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             fields.push(f);
         }
 
-        // LÓGICA DO CAMPO 3 (DADO DINÂMICO)
-        const scriptC3 = [
-            'var n2 = Number(this.getField("c2").value) || 0;',
-            'var d = "1d4";',
-            'if (n2 > 50) d = "1d100";',
-            'else if (n2 > 35) d = "1d50";',
-            'else if (n2 > 25) d = "1d20";',
-            'else if (n2 > 20) d = "1d12";',
-            'else if (n2 > 15) d = "1d10";',
-            'else if (n2 > 10) d = "1d8";',
-            'else if (n2 > 5) d = "1d6";',
-            'event.value = d;'
+        // SCRIPT UNIFICADO: O Campo 2 agora controla o Campo 3 e o Campo 4
+        const scriptMotor = [
+            'var c1 = Number(this.getField("c1").value) || 0;',
+            'var c2 = Number(this.getField("c2").value) || 0;',
+            'var dText = "1d4"; var dNum = 4;',
+            'if (c2 > 50) { dText = "1d100"; dNum = 100; }',
+            'else if (c2 > 35) { dText = "1d50"; dNum = 50; }',
+            'else if (c2 > 25) { dText = "1d20"; dNum = 20; }',
+            'else if (c2 > 20) { dText = "1d12"; dNum = 12; }',
+            'else if (c2 > 15) { dText = "1d10"; dNum = 10; }',
+            'else if (c2 > 10) { dText = "1d8"; dNum = 8; }',
+            'else if (c2 > 5) { dText = "1d6"; dNum = 6; }',
+            'this.getField("c3").value = dText;',
+            'this.getField("res").value = (c1 * c2) + dNum;'
         ].join(' ');
 
-        // LÓGICA DO CAMPO 4 (SOMA TOTAL)
-        const scriptC4 = [
-            'var v1 = Number(this.getField("c1").value) || 0;',
-            'var v2 = Number(this.getField("c2").value) || 0;',
-            'var v3 = this.getField("c3").valueAsString || this.getField("c3").value || "1d4";',
-            'var num3 = 0;',
-            'if (v3.indexOf("d") > -1) { num3 = Number(v3.split("d")[1]) || 0; }',
-            'else { num3 = Number(v3) || 0; }',
-            'event.value = (v1 * v2) + num3;'
-        ].join(' ');
+        // Injetamos a lógica no "OnBlur" ou "Calculate" dos campos de entrada
+        // Assim, qualquer mudança em C1 ou C2 dispara a atualização total
+        const action = docContext.obj({
+            Type: 'Action',
+            S: 'JavaScript',
+            JS: PDFString.of(scriptMotor)
+        });
 
-        // Injeta os gatilhos de cálculo
-        fields[2].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC3) })
-        }));
+        fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // Ao digitar no C1
+        fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); // Ao digitar no C2
 
-        fields[3].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC4) })
-        }));
-
-        // Define a Ordem de Cálculo (CO) - Crucial para o Chrome
+        // Configuração final do PDF
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
             const acroFormDict = docContext.lookup(acroForm);
-            // C3 calcula o dado ANTES do RES somar tudo
-            acroFormDict.set(PDFName.of('CO'), docContext.obj([fields[2].ref, fields[3].ref]));
             acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
         }
 
@@ -129,11 +120,11 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_final.pdf";
+        a.download = "ficha_RPG_calculavel.pdf";
         a.click();
-        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+        setTimeout(() => window.URL.revokeObjectURL(url), 1500);
 
     } catch (err) {
-        alert("Erro: " + err.message);
+        alert("Erro técnico: " + err.message);
     }
 });
