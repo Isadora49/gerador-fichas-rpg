@@ -3,7 +3,7 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 let pdfOriginalBytes = null; 
 let clicks = [];
 
-// 1. RÓTULOS EXPANDIDOS (Total 36)
+// 1. RÓTULOS EXPANDIDOS (Total 40 - 36 lógicos + 4 textos livres)
 const labels = [
     "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
     "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)",
@@ -13,7 +13,8 @@ const labels = [
     "C21 (Nível 9)", "C22 (Dado 9)", "C23 (Nível 10)", "C24 (Dado 10)",
     "C25 (Nível 11)", "C26 (Dado 11)", "C27 (Nível 12)", "C28 (Dado 12)",
     "C29 (Nível 13)", "C30 (Dado 13)", "C31 (Nível 14)", "C32 (Dado 14)",
-    "C33 (Nível 15)", "C34 (Dado 15)", "C35 (Nível 16)", "C36 (Dado 16)"
+    "C33 (Nível 15)", "C34 (Dado 15)", "C35 (Nível 16)", "C36 (Dado 16)",
+    "C37 (Texto Livre 1)", "C38 (Texto Livre 2)", "C39 (Texto Livre 3)", "C40 (Texto Livre 4)"
 ];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -44,9 +45,9 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     }
 });
 
-// MARCAÇÃO (Limite atualizado para 36)
+// MARCAÇÃO (Limite atualizado para 40)
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
-    if (clicks.length >= 36 || !pdfOriginalBytes) return;
+    if (clicks.length >= 40 || !pdfOriginalBytes) return;
     const rect = e.target.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -65,7 +66,7 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     marker.innerText = labels[clicks.length - 1];
     document.body.appendChild(marker);
     
-    if (clicks.length === 36) {
+    if (clicks.length === 40) {
         document.getElementById('status').innerText = "Pronto!";
         document.getElementById('btnDownload').disabled = false;
     } else {
@@ -82,8 +83,8 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const { width, height } = page.getSize();
         const docContext = pdfDoc.context;
 
-        // Gerar nomes de c1 até c36
-        const fieldNames = Array.from({length: 36}, (_, i) => {
+        // Gerar nomes de c1 até c40
+        const fieldNames = Array.from({length: 40}, (_, i) => {
             if (i === 3) return 'res';
             if (i === 6) return 'res2';
             return `c${i+1}`;
@@ -91,7 +92,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         
         const fields = [];
 
-        for (let i = 0; i < 36; i++) {
+        for (let i = 0; i < 40; i++) {
             let f;
             if (i === 0) {
                 f = form.createDropdown(fieldNames[i]);
@@ -99,9 +100,15 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
                 f.select('A');
             } else {
                 f = form.createTextField(fieldNames[i]);
-                // Índices que são campos de "Dado" (C3, C6, C10, C12, C14, C16, C18, C20, C22, C24, C26, C28, C30, C32, C34, C36)
-                const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
-                f.setText(dadosIndices.includes(i) ? "1d4" : "0");
+                
+                // Índices lógicos (até C36)
+                if (i < 36) {
+                    const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
+                    f.setText(dadosIndices.includes(i) ? "1d4" : "0");
+                } else {
+                    // Campos 37, 38, 39 e 40 (Texto Livre) ficam vazios por padrão
+                    f.setText(""); 
+                }
             }
             const pos = clicks[i];
             const pdfX = (pos.x * width) / pos.w;
@@ -110,7 +117,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             fields.push(f);
         }
 
-        // MOTOR DE CÁLCULO ATUALIZADO (Total 36)
+        // MOTOR DE CÁLCULO MANTIDO INTACTO (Lógica até C36 apenas)
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
@@ -165,7 +172,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        // GATILHOS (Índices dos campos de Nível que disparam o script)
+        // GATILHOS (Índices apenas dos campos lógicos)
         const triggerIndices = [0, 1, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34]; 
         triggerIndices.forEach(idx => {
             fields[idx].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action }));
@@ -182,7 +189,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_RPG_36_campos.pdf";
+        a.download = "ficha_RPG_40_campos.pdf";
         a.click();
     } catch (err) {
         alert("Erro técnico: " + err.message);
