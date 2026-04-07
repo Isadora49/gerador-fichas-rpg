@@ -2,11 +2,11 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
-const labels = ["C1 (Base)", "C2 (Nível)", "C3 (Dado de Dano)", "C4 (Total)"];
+const labels = ["C1 (Base)", "C2 (E2/Nível)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO
+// 1. CARREGAMENTO (Proteção de Memória)
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -28,7 +28,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         document.getElementById('status').innerText = "Clique para: " + labels[0];
         document.getElementById('btnDownload').disabled = true;
     } catch (err) {
-        alert("Erro ao carregar PDF: " + err.message);
+        alert("Erro no PDF: " + err.message);
     }
 });
 
@@ -59,7 +59,7 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. DOWNLOAD COM LÓGICA REFORÇADA
+// 3. DOWNLOAD E LÓGICA DE CÁLCULO INFALÍVEL
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
@@ -81,44 +81,49 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             fields.push(f);
         }
 
-        // SCRIPT DO CAMPO 3 (DADO ESCALONADO)
-        const logicC3 = `
-            var e2 = Number(this.getField("c2").value) || 0;
+        // Lógica do Campo 3 (Visualização do Dado)
+        const scriptC3 = `
+            var n = Number(this.getField("c2").value) || 0;
             var d = "1d4";
-            if (e2 > 50) d = "1d100";
-            else if (e2 > 35) d = "1d50";
-            else if (e2 > 25) d = "1d20";
-            else if (e2 > 20) d = "1d12";
-            else if (e2 > 15) d = "1d10";
-            else if (e2 > 10) d = "1d8";
-            else if (e2 > 5) d = "1d6";
+            if (n > 50) d = "1d100";
+            else if (n > 35) d = "1d50";
+            else if (n > 25) d = "1d20";
+            else if (n > 20) d = "1d12";
+            else if (n > 15) d = "1d10";
+            else if (n > 10) d = "1d8";
+            else if (n > 5) d = "1d6";
             event.value = d;
         `;
 
-        // SCRIPT DO CAMPO 4 (SOMA TOTAL)
-        const logicC4 = `
+        // Lógica do Campo 4 (Cálculo Total) - Recalcula o valor do dado internamente para evitar erros
+        const scriptC4 = `
             var n1 = Number(this.getField("c1").value) || 0;
             var n2 = Number(this.getField("c2").value) || 0;
-            var v3 = this.getField("c3").value + "";
-            var n3 = Number(v3.replace("1d", "")) || 0;
-            event.value = (n1 * n2) + n3;
+            var dVal = 4;
+            if (n2 > 50) dVal = 100;
+            else if (n2 > 35) dVal = 50;
+            else if (n2 > 25) dVal = 20;
+            else if (n2 > 20) dVal = 12;
+            else if (n2 > 15) dVal = 10;
+            else if (n2 > 10) dVal = 8;
+            else if (n2 > 5) dVal = 6;
+            event.value = (n1 * n2) + dVal;
         `;
 
-        // Injetar cálculo no C3
+        // Injetando Scripts
         fields[2].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(logicC3) })
+            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC3) })
         }));
 
-        // Injetar cálculo no C4 (Resultado)
         fields[3].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(logicC4) })
+            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC4) })
         }));
 
-        // ORDEM DE CÁLCULO: Primeiro define o dado (C3), depois soma tudo (C4)
+        // Ordem de Cálculo (Fundamental para Navegadores)
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
             const acroFormDict = docContext.lookup(acroForm);
-            // IMPORTANTE: c3 deve vir ANTES de res na lista
+            // Primeiro o Dado (C3), depois o Resultado (res)
             acroFormDict.set(PDFName.of('CO'), docContext.obj([fields[2].ref, fields[3].ref]));
             acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
         }
@@ -127,10 +132,17 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = "ficha_T20_corrigida.pdf"; a.click();
-        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+        a.href = url;
+        a.download = "ficha_ajustada.pdf";
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 1000);
 
     } catch (err) {
-        alert("Erro: " + err.message);
+        alert("Erro Técnico: " + err.message);
     }
 });
