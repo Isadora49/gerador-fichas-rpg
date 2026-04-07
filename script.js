@@ -2,9 +2,12 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
+// Expandido para 16 rótulos
 const labels = [
     "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
-    "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)"
+    "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)",
+    "C9 (Extra)", "C10 (Extra)", "C11 (Extra)", "C12 (Extra)",
+    "C13 (Extra)", "C14 (Extra)", "C15 (Extra)", "C16 (Extra)"
 ];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
@@ -37,11 +40,14 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
 
 // 2. MARCAÇÃO
 document.getElementById('pdf-canvas').addEventListener('click', (e) => {
-    if (clicks.length >= 8 || !pdfOriginalBytes) return;
+    // Aumentado o limite para 16 cliques
+    if (clicks.length >= 16 || !pdfOriginalBytes) return;
+    
     const rect = e.target.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     clicks.push({ x, y, w: rect.width, h: rect.height });
+    
     const marker = document.createElement('div');
     marker.className = 'marker';
     marker.style.left = e.pageX + 'px';
@@ -54,7 +60,9 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     marker.style.zIndex = "100";
     marker.innerText = labels[clicks.length - 1];
     document.body.appendChild(marker);
-    if (clicks.length === 8) {
+    
+    // Checagem de conclusão alterada para 16
+    if (clicks.length === 16) {
         document.getElementById('status').innerText = "Pronto!";
         document.getElementById('btnDownload').disabled = false;
     } else {
@@ -71,10 +79,15 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const { width, height } = page.getSize();
         const docContext = pdfDoc.context;
 
-        const fieldNames = ['c1', 'c2', 'c3', 'res', 'c5', 'c6', 'res2', 'c8'];
+        // Adicionado os campos c9 a c16 na lista de nomes
+        const fieldNames = [
+            'c1', 'c2', 'c3', 'res', 'c5', 'c6', 'res2', 'c8',
+            'c9', 'c10', 'c11', 'c12', 'c13', 'c14', 'c15', 'c16'
+        ];
         const fields = [];
 
-        for (let i = 0; i < 8; i++) {
+        // O laço agora vai até 16
+        for (let i = 0; i < 16; i++) {
             let f;
             if (i === 0) {
                 f = form.createDropdown(fieldNames[i]);
@@ -91,17 +104,16 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             fields.push(f);
         }
 
-        // MOTOR DE CÁLCULO TRIPLO
+        // MOTOR DE CÁLCULO (A lógica dos 8 primeiros continua intacta)
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
             
-            // Definição da trinca de valores com base na escolha
             'if (escolha == "A") { valBase1 = 8; valBase2 = 2; valBase3 = 2; }',
             'else if (escolha == "B") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
-            'else if (escolha == "C") { valBase1 = 4; valBase2 = 4; valBase3 = 2; }', // Ajustado para 4, 4, 2 conforme seu exemplo
+            'else if (escolha == "C") { valBase1 = 4; valBase2 = 4; valBase3 = 2; }',
             
-            // --- BLOCO 1 (C2 influencia C3, gera C4/res e C8) ---
+            // --- BLOCO 1 ---
             'var n1 = Number(this.getField("c2").value) || 0;',
             'var d1T = "1d4"; var d1N = 4;',
             'if (n1 >= 51) { d1T = "1d100"; d1N = 100; }',
@@ -113,13 +125,10 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             'else if (n1 >= 6) { d1T = "1d6"; d1N = 6; }',
             'this.getField("c3").value = d1T;',
             
-            // Cálculo do Campo 4 (Total 1)
             'this.getField("res").value = (valBase1 * n1) + d1N;',
-            
-            // NOVO: Cálculo do Campo 8 usando a base 3, o campo 2 (n1) e o campo 3 (d1N)
             'this.getField("c8").value = (valBase3 * n1) + d1N;',
 
-            // --- BLOCO 2 (C5 influencia C6 e gera C7/res2) ---
+            // --- BLOCO 2 ---
             'var n2 = Number(this.getField("c5").value) || 0;',
             'var d2T = "1d4"; var d2N = 4;',
             'if (n2 >= 51) { d2T = "1d100"; d2N = 100; }',
@@ -139,8 +148,6 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        // Os gatilhos continuam os mesmos, já que c8 depende de C1 e C2, 
-        // e ambos já possuem o evento atrelado a eles.
         fields[0].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action })); 
         fields[1].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
         fields[4].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action })); 
@@ -156,7 +163,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_RPG_tripla_logica.pdf";
+        a.download = "ficha_RPG_16_campos.pdf";
         a.click();
     } catch (err) {
         alert("Erro técnico: " + err.message);
