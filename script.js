@@ -2,11 +2,11 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
-const labels = ["C1 (Base)", "C2 (E2/Nível)", "C3 (Dado)", "C4 (Total)"];
+const labels = ["C1 (Base)", "C2 (Nível)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO (Proteção de Memória)
+// 1. CARREGAMENTO
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -28,7 +28,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         document.getElementById('status').innerText = "Clique para: " + labels[0];
         document.getElementById('btnDownload').disabled = true;
     } catch (err) {
-        alert("Erro no PDF: " + err.message);
+        alert("Erro: " + err.message);
     }
 });
 
@@ -59,7 +59,7 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. DOWNLOAD E LÓGICA DE CÁLCULO INFALÍVEL
+// 3. DOWNLOAD E LÓGICA DE CÁLCULO (C1 * C2) + C3_NUM
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
@@ -77,53 +77,51 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             const pdfX = (pos.x * width) / pos.w;
             const pdfY = height - ((pos.y * height) / pos.h);
             f.addToPage(page, { x: pdfX, y: pdfY - 10, width: 60, height: 20 });
-            f.setText("0");
+            f.setText(i === 2 ? "1d4" : "0");
             fields.push(f);
         }
 
-        // Lógica do Campo 3 (Visualização do Dado)
-        const scriptC3 = `
-            var n = Number(this.getField("c2").value) || 0;
+        // SCRIPT CAMPO 3: Define o texto "1dXX" baseado no Campo 2
+        const logicC3 = `
+            var v2 = Number(this.getField("c2").value) || 0;
             var d = "1d4";
-            if (n > 50) d = "1d100";
-            else if (n > 35) d = "1d50";
-            else if (n > 25) d = "1d20";
-            else if (n > 20) d = "1d12";
-            else if (n > 15) d = "1d10";
-            else if (n > 10) d = "1d8";
-            else if (n > 5) d = "1d6";
+            if (v2 > 50) d = "1d100";
+            else if (v2 > 35) d = "1d50";
+            else if (v2 > 25) d = "1d20";
+            else if (v2 > 20) d = "1d12";
+            else if (v2 > 15) d = "1d10";
+            else if (v2 > 10) d = "1d8";
+            else if (v2 > 5) d = "1d6";
             event.value = d;
         `;
 
-        // Lógica do Campo 4 (Cálculo Total) - Recalcula o valor do dado internamente para evitar erros
-        const scriptC4 = `
+        // SCRIPT CAMPO 4: (C1 * C2) + Numero extraído do Campo 3
+        const logicC4 = `
             var n1 = Number(this.getField("c1").value) || 0;
             var n2 = Number(this.getField("c2").value) || 0;
-            var dVal = 4;
-            if (n2 > 50) dVal = 100;
-            else if (n2 > 35) dVal = 50;
-            else if (n2 > 25) dVal = 20;
-            else if (n2 > 20) dVal = 12;
-            else if (n2 > 15) dVal = 10;
-            else if (n2 > 10) dVal = 8;
-            else if (n2 > 5) dVal = 6;
-            event.value = (n1 * n2) + dVal;
+            var v3 = this.getField("c3").valueAsString || this.getField("c3").value || "1d4";
+            var n3 = 0;
+            if (v3.toString().indexOf("d") > -1) {
+                n3 = Number(v3.toString().split("d")[1]) || 0;
+            } else {
+                n3 = Number(v3) || 0;
+            }
+            event.value = (n1 * n2) + n3;
         `;
 
-        // Injetando Scripts
+        // Injeção de Scripts
         fields[2].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC3) })
+            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(logicC3) })
         }));
 
         fields[3].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC4) })
+            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(logicC4) })
         }));
 
-        // Ordem de Cálculo (Fundamental para Navegadores)
+        // Ordem de Cálculo e Ativação do Form
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
             const acroFormDict = docContext.lookup(acroForm);
-            // Primeiro o Dado (C3), depois o Resultado (res)
             acroFormDict.set(PDFName.of('CO'), docContext.obj([fields[2].ref, fields[3].ref]));
             acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
         }
@@ -133,16 +131,16 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_ajustada.pdf";
+        a.download = "ficha_RPG_pronta.pdf";
         document.body.appendChild(a);
         a.click();
         
         setTimeout(() => {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
-        }, 1000);
+        }, 1500);
 
     } catch (err) {
-        alert("Erro Técnico: " + err.message);
+        alert("Erro no Download: " + err.message);
     }
 });
