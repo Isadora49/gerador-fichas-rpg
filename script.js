@@ -2,7 +2,7 @@ const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
 let pdfOriginalBytes = null; 
 let clicks = [];
-const labels = ["C1 (Base)", "C2 (Nível)", "C3 (Dado)", "C4 (Total)"];
+const labels = ["C1 (Base)", "C2 (Bonus)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
@@ -87,12 +87,12 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             'var c2 = Number(this.getField("c2").value) || 0;',
             'var dText = "1d4"; var dNum = 4;',
             'if (c2 > 50) { dText = "1d100"; dNum = 100; }',
-            'else if (c2 > 35) { dText = "1d50"; dNum = 50; }',
-            'else if (c2 > 25) { dText = "1d20"; dNum = 20; }',
-            'else if (c2 > 20) { dText = "1d12"; dNum = 12; }',
-            'else if (c2 > 15) { dText = "1d10"; dNum = 10; }',
-            'else if (c2 > 10) { dText = "1d8"; dNum = 8; }',
-            'else if (c2 > 5) { dText = "1d6"; dNum = 6; }',
+            'else if (c2 => 35) { dText = "1d50"; dNum = 50; }',
+            'else if (c2 => 25) { dText = "1d20"; dNum = 20; }',
+            'else if (c2 => 20) { dText = "1d12"; dNum = 12; }',
+            'else if (c2 => 15) { dText = "1d10"; dNum = 10; }',
+            'else if (c2 => 10) { dText = "1d8"; dNum = 8; }',
+            'else if (c2 => 5) { dText = "1d6"; dNum = 6; }',
             'this.getField("c3").value = dText;',
             'this.getField("res").value = (c1 * c2) + dNum;'
         ].join(' ');
