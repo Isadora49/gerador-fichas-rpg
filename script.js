@@ -6,7 +6,7 @@ const labels = ["C1 (Base)", "C2 (Nível)", "C3 (Dado)", "C4 (Total)"];
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// 1. CARREGAMENTO
+// 1. CARREGAMENTO (Proteção de memória)
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -59,7 +59,7 @@ document.getElementById('pdf-canvas').addEventListener('click', (e) => {
     }
 });
 
-// 3. DOWNLOAD E LÓGICA DE CÁLCULO (C1 * C2) + C3_NUM
+// 3. LOGICA DO PDF E DOWNLOAD
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
@@ -81,47 +81,45 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             fields.push(f);
         }
 
-        // SCRIPT CAMPO 3: Define o texto "1dXX" baseado no Campo 2
-        const logicC3 = `
-            var v2 = Number(this.getField("c2").value) || 0;
-            var d = "1d4";
-            if (v2 > 50) d = "1d100";
-            else if (v2 > 35) d = "1d50";
-            else if (v2 > 25) d = "1d20";
-            else if (v2 > 20) d = "1d12";
-            else if (v2 > 15) d = "1d10";
-            else if (v2 > 10) d = "1d8";
-            else if (v2 > 5) d = "1d6";
-            event.value = d;
-        `;
+        // LÓGICA DO CAMPO 3 (DADO DINÂMICO)
+        const scriptC3 = [
+            'var n2 = Number(this.getField("c2").value) || 0;',
+            'var d = "1d4";',
+            'if (n2 > 50) d = "1d100";',
+            'else if (n2 > 35) d = "1d50";',
+            'else if (n2 > 25) d = "1d20";',
+            'else if (n2 > 20) d = "1d12";',
+            'else if (n2 > 15) d = "1d10";',
+            'else if (n2 > 10) d = "1d8";',
+            'else if (n2 > 5) d = "1d6";',
+            'event.value = d;'
+        ].join(' ');
 
-        // SCRIPT CAMPO 4: (C1 * C2) + Numero extraído do Campo 3
-        const logicC4 = `
-            var n1 = Number(this.getField("c1").value) || 0;
-            var n2 = Number(this.getField("c2").value) || 0;
-            var v3 = this.getField("c3").valueAsString || this.getField("c3").value || "1d4";
-            var n3 = 0;
-            if (v3.toString().indexOf("d") > -1) {
-                n3 = Number(v3.toString().split("d")[1]) || 0;
-            } else {
-                n3 = Number(v3) || 0;
-            }
-            event.value = (n1 * n2) + n3;
-        `;
+        // LÓGICA DO CAMPO 4 (SOMA TOTAL)
+        const scriptC4 = [
+            'var v1 = Number(this.getField("c1").value) || 0;',
+            'var v2 = Number(this.getField("c2").value) || 0;',
+            'var v3 = this.getField("c3").valueAsString || this.getField("c3").value || "1d4";',
+            'var num3 = 0;',
+            'if (v3.indexOf("d") > -1) { num3 = Number(v3.split("d")[1]) || 0; }',
+            'else { num3 = Number(v3) || 0; }',
+            'event.value = (v1 * v2) + num3;'
+        ].join(' ');
 
-        // Injeção de Scripts
+        // Injeta os gatilhos de cálculo
         fields[2].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(logicC3) })
+            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC3) })
         }));
 
         fields[3].acroField.dict.set(PDFName.of('AA'), docContext.obj({
-            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(logicC4) })
+            C: docContext.obj({ Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptC4) })
         }));
 
-        // Ordem de Cálculo e Ativação do Form
+        // Define a Ordem de Cálculo (CO) - Crucial para o Chrome
         const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
         if (acroForm) {
             const acroFormDict = docContext.lookup(acroForm);
+            // C3 calcula o dado ANTES do RES somar tudo
             acroFormDict.set(PDFName.of('CO'), docContext.obj([fields[2].ref, fields[3].ref]));
             acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
         }
@@ -131,16 +129,11 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = "ficha_RPG_pronta.pdf";
-        document.body.appendChild(a);
+        a.download = "ficha_final.pdf";
         a.click();
-        
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 1500);
+        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 
     } catch (err) {
-        alert("Erro no Download: " + err.message);
+        alert("Erro: " + err.message);
     }
 });
