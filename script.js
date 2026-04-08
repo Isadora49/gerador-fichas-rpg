@@ -1,4 +1,5 @@
-const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
+// Adicionamos TextAlignment à desestruturação
+const { PDFDocument, PDFName, PDFString, TextAlignment } = window.PDFLib || {};
 
 let pdfOriginalBytes = null;
 const labels = [
@@ -57,7 +58,7 @@ canvas.addEventListener('click', (e) => {
     const marker = document.createElement('div');
     marker.className = 'marker';
     marker.id = `field-${currentStep}`;
-    // Definindo tamanho padrão baseado no tipo
+    
     const defaultW = (currentStep >= 40) ? 120 : 60;
     const defaultH = (currentStep >= 40) ? 60 : 20;
 
@@ -80,13 +81,12 @@ canvas.addEventListener('click', (e) => {
     }
 });
 
-// FUNÇÃO PARA ARRASTAR ELEMENTOS
 function makeDraggable(el) {
     let isDragging = false;
     let offset = { x: 0, y: 0 };
 
     el.addEventListener('mousedown', (e) => {
-        if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return; // Não arrasta se estiver redimensionando
+        if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return; 
         isDragging = true;
         offset = {
             x: e.clientX - el.offsetLeft,
@@ -115,14 +115,17 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             const el = document.getElementById(`field-${i}`);
             if (!el) continue;
 
-            // Nomes dos campos
             let name = (i === 3) ? 'res' : (i === 6) ? 'res2' : `c${i+1}`;
-            
             let f;
+
             if (i === 0) {
                 f = form.createDropdown(name);
-                f.addOptions(['A', 'B', 'C']);
-                f.select('A');
+                const opcoesClasses = [
+                    ' ', 'Tank', 'Hibrido', 'Assassino', 'Destruidor', 
+                    'Arcano', 'Mentalista', 'Vitalista', 'Invocador', 'Elementalista'
+                ];
+                f.addOptions(opcoesClasses);
+                f.select(' ');
             } else {
                 f = form.createTextField(name);
                 if (i < 36) {
@@ -131,17 +134,19 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
                 } else if (i >= 40) {
                     f.enableMultiline();
                 }
+                
+                // Força a aparência padrão para evitar o erro de /DA
+                f.acroField.dict.set(PDFName.of('DA'), PDFString.of('/Helvetica 12 Tf 0 g'));
+                f.setFontSize(12);
+                f.setAlignment(TextAlignment.Center);
             }
 
-            // Converter coordenadas do HTML para o PDF
-            const rect = canvas.getBoundingClientRect();
             const elLeft = parseFloat(el.style.left);
             const elTop = parseFloat(el.style.top);
             const elW = el.offsetWidth;
             const elH = el.offsetHeight;
 
             const pdfX = (elLeft * width) / canvas.width;
-            // No PDF, o Y 0 é na BASE da página, no HTML é no TOPO.
             const pdfY = height - ((elTop * height) / canvas.height) - ((elH * height) / canvas.height);
             const pdfW = (elW * width) / canvas.width;
             const pdfH = (elH * height) / canvas.height;
@@ -149,13 +154,20 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             f.addToPage(page, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
         }
 
-        // MOTOR DE CÁLCULO (O mesmo que você já usa)
+        // --- SCRIPT DO MOTOR (MANTIDO) ---
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
-            'if (escolha == "A") { valBase1 = 8; valBase2 = 2; valBase3 = 2; }',
-            'else if (escolha == "B") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
-            'else if (escolha == "C") { valBase1 = 4; valBase2 = 4; valBase3 = 2; }',
+            'if (escolha == " " || escolha == "") { valBase1 = 0; valBase2 = 0; valBase3 = 0; }',
+            'else if (escolha == "Tank") { valBase1 = 8; valBase2 = 2; valBase3 = 2; }',
+            'else if (escolha == "Hibrido") { valBase1 = 4; valBase2 = 2; valBase3 = 4; }',
+            'else if (escolha == "Assassino") { valBase1 = 2; valBase2 = 2; valBase3 = 8; }',
+            'else if (escolha == "Destruidor") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
+            'else if (escolha == "Arcano") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
+            'else if (escolha == "Mentalista") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
+            'else if (escolha == "Vitalista") { valBase1 = 2; valBase2 = 6; valBase3 = 2; }',
+            'else if (escolha == "Invocador") { valBase1 = 2; valBase2 = 6; valBase3 = 2; }',
+            'else if (escolha == "Elementalista") { valBase1 = 2; valBase2 = 5; valBase3 = 2; }',
             'function getDado(nivel) {',
             '  nivel = Number(nivel) || 0;',
             '  if (nivel >= 51) return "1d100"; if (nivel >= 27) return "1d50";',
@@ -194,17 +206,23 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        const triggerIndices = [0, 1, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34]; 
-        const allFields = form.getFields();
-        triggerIndices.forEach(idx => {
-            allFields[idx].acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ K: action, V: action }));
+        // Aplicamos o trigger AA nos campos relevantes
+        const triggerNames = ['c1', 'c2', 'c5', 'c9', 'c11', 'c13', 'c15', 'c17', 'c19', 'c21', 'c23', 'c25', 'c27', 'c29', 'c31', 'c33', 'c35'];
+        triggerNames.forEach(name => {
+            try {
+                const field = form.getField(name);
+                field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ 
+                    K: action, 
+                    V: action 
+                }));
+            } catch(e) { console.warn("Campo não encontrado para trigger:", name); }
         });
 
         const finalPdfBytes = await pdfDoc.save();
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = "ficha_interativa.pdf";
+        a.download = "ficha_centralizada.pdf";
         a.click();
     } catch (err) {
         console.error(err);
