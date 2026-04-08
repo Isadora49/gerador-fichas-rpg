@@ -134,11 +134,19 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
                 } else if (i >= 40) {
                     f.enableMultiline();
                 }
-                
-                // Força a aparência padrão para evitar o erro de /DA
+
+                // Correção de erro de aparência (/DA)
                 f.acroField.dict.set(PDFName.of('DA'), PDFString.of('/Helvetica 12 Tf 0 g'));
                 f.setFontSize(12);
-                f.setAlignment(TextAlignment.Center);
+
+                // --- NOVA LÓGICA DE ALINHAMENTO ---
+                // Índices 36 (C37), 37 (C38), 40 (C41), 41 (C42), 42 (C43)
+                const indicesEsquerda = [36, 37, 40, 41, 42];
+                if (indicesEsquerda.includes(i)) {
+                    f.setAlignment(TextAlignment.Left);
+                } else {
+                    f.setAlignment(TextAlignment.Center);
+                }
             }
 
             const elLeft = parseFloat(el.style.left);
@@ -154,7 +162,7 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             f.addToPage(page, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
         }
 
-        // --- SCRIPT DO MOTOR (MANTIDO) ---
+        // --- SCRIPT DO MOTOR ---
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
@@ -206,7 +214,6 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        // Aplicamos o trigger AA nos campos relevantes
         const triggerNames = ['c1', 'c2', 'c5', 'c9', 'c11', 'c13', 'c15', 'c17', 'c19', 'c21', 'c23', 'c25', 'c27', 'c29', 'c31', 'c33', 'c35'];
         triggerNames.forEach(name => {
             try {
