@@ -1,9 +1,6 @@
 const { PDFDocument, PDFName, PDFString } = window.PDFLib || {};
 
-let pdfOriginalBytes = null; 
-let clicks = [];
-
-// 1. RÓTULOS EXPANDIDOS (Total 43 - 36 lógicos + 4 textos simples + 3 textos multilinhas)
+let pdfOriginalBytes = null;
 const labels = [
     "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
     "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)",
@@ -18,6 +15,10 @@ const labels = [
     "C41 (Multi-linha 1)", "C42 (Multi-linha 2)", "C43 (Multi-linha 3)"
 ];
 
+let currentStep = 0;
+const canvas = document.getElementById('pdf-canvas');
+const wrapper = document.getElementById('canvas-wrapper');
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
 // CARREGAMENTO
@@ -27,113 +28,128 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     try {
         const arrayBuffer = await file.arrayBuffer();
         pdfOriginalBytes = arrayBuffer.slice(0); 
-        const previewBytes = arrayBuffer.slice(0);
-        const loadingTask = pdfjsLib.getDocument({ data: previewBytes });
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 1.5 });
-        const canvas = document.getElementById('pdf-canvas');
         const context = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         await page.render({ canvasContext: context, viewport: viewport }).promise;
+        
         document.querySelectorAll('.marker').forEach(m => m.remove());
-        clicks = [];
-        document.getElementById('status').innerText = "Clique para: " + labels[0];
+        currentStep = 0;
+        document.getElementById('status').innerText = "Clique para posicionar: " + labels[0];
         document.getElementById('btnDownload').disabled = true;
     } catch (err) {
         alert("Erro no PDF: " + err.message);
     }
 });
 
-// MARCAÇÃO (Limite atualizado para 43)
-document.getElementById('pdf-canvas').addEventListener('click', (e) => {
-    if (clicks.length >= 43 || !pdfOriginalBytes) return;
-    const rect = e.target.getBoundingClientRect();
+// CRIAÇÃO DO MARCADOR ARRASTÁVEL
+canvas.addEventListener('click', (e) => {
+    if (currentStep >= 43 || !pdfOriginalBytes) return;
+
+    const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    clicks.push({ x, y, w: rect.width, h: rect.height });
-    
+
     const marker = document.createElement('div');
     marker.className = 'marker';
-    marker.style.left = e.pageX + 'px';
-    marker.style.top = e.pageY + 'px';
-    marker.style.position = 'absolute';
-    marker.style.background = '#e74c3c';
-    marker.style.color = 'white';
-    marker.style.padding = '4px';
-    marker.style.borderRadius = '4px';
-    marker.style.zIndex = "100";
-    marker.innerText = labels[clicks.length - 1];
-    document.body.appendChild(marker);
+    marker.id = `field-${currentStep}`;
+    // Definindo tamanho padrão baseado no tipo
+    const defaultW = (currentStep >= 40) ? 120 : 60;
+    const defaultH = (currentStep >= 40) ? 60 : 20;
+
+    marker.style.width = defaultW + 'px';
+    marker.style.height = defaultH + 'px';
+    marker.style.left = (x - defaultW / 2) + 'px';
+    marker.style.top = (y - defaultH / 2) + 'px';
     
-    if (clicks.length === 43) {
-        document.getElementById('status').innerText = "Pronto!";
+    marker.innerHTML = `<span class="label-text">${labels[currentStep]}</span>`;
+    wrapper.appendChild(marker);
+
+    makeDraggable(marker);
+
+    currentStep++;
+    if (currentStep === 43) {
+        document.getElementById('status').innerText = "Todos os campos posicionados!";
         document.getElementById('btnDownload').disabled = false;
     } else {
-        document.getElementById('status').innerText = "Clique para: " + labels[clicks.length];
+        document.getElementById('status').innerText = "Posicione: " + labels[currentStep];
     }
 });
 
-// LOGICA E DOWNLOAD
+// FUNÇÃO PARA ARRASTAR ELEMENTOS
+function makeDraggable(el) {
+    let isDragging = false;
+    let offset = { x: 0, y: 0 };
+
+    el.addEventListener('mousedown', (e) => {
+        if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return; // Não arrasta se estiver redimensionando
+        isDragging = true;
+        offset = {
+            x: e.clientX - el.offsetLeft,
+            y: e.clientY - el.offsetTop
+        };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        el.style.left = (e.clientX - offset.x) + 'px';
+        el.style.top = (e.clientY - offset.y) + 'px';
+    });
+
+    document.addEventListener('mouseup', () => { isDragging = false; });
+}
+
+// GERAÇÃO DO PDF FINAL
 document.getElementById('btnDownload').addEventListener('click', async () => {
     try {
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
         const { width, height } = page.getSize();
-        const docContext = pdfDoc.context;
-
-        // Gerar nomes de c1 até c43
-        const fieldNames = Array.from({length: 43}, (_, i) => {
-            if (i === 3) return 'res';
-            if (i === 6) return 'res2';
-            return `c${i+1}`;
-        });
-        
-        const fields = [];
 
         for (let i = 0; i < 43; i++) {
+            const el = document.getElementById(`field-${i}`);
+            if (!el) continue;
+
+            // Nomes dos campos
+            let name = (i === 3) ? 'res' : (i === 6) ? 'res2' : `c${i+1}`;
+            
             let f;
             if (i === 0) {
-                f = form.createDropdown(fieldNames[i]);
+                f = form.createDropdown(name);
                 f.addOptions(['A', 'B', 'C']);
                 f.select('A');
             } else {
-                f = form.createTextField(fieldNames[i]);
-                
-                // Configuração conforme o índice
+                f = form.createTextField(name);
                 if (i < 36) {
                     const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
                     f.setText(dadosIndices.includes(i) ? "1d4" : "0");
                 } else if (i >= 40) {
-                    // Campos 41, 42 e 43 são MULTILINHAS
                     f.enableMultiline();
-                    f.setText("");
-                } else {
-                    // Campos 37 a 40 são texto simples vazios
-                    f.setText(""); 
                 }
             }
 
-            const pos = clicks[i];
-            const pdfX = (pos.x * width) / pos.w;
-            const pdfY = height - ((pos.y * height) / pos.h);
-            
-            // Para campos multilinhas (i >= 40), podemos aumentar um pouco a altura visual se desejar
-            const fieldHeight = (i >= 40) ? 60 : 20; 
-            const fieldWidth = (i >= 40) ? 120 : 60;
+            // Converter coordenadas do HTML para o PDF
+            const rect = canvas.getBoundingClientRect();
+            const elLeft = parseFloat(el.style.left);
+            const elTop = parseFloat(el.style.top);
+            const elW = el.offsetWidth;
+            const elH = el.offsetHeight;
 
-            f.addToPage(page, { 
-                x: pdfX, 
-                y: pdfY - (fieldHeight / 2), 
-                width: fieldWidth, 
-                height: fieldHeight 
-            });
-            fields.push(f);
+            const pdfX = (elLeft * width) / canvas.width;
+            // No PDF, o Y 0 é na BASE da página, no HTML é no TOPO.
+            const pdfY = height - ((elTop * height) / canvas.height) - ((elH * height) / canvas.height);
+            const pdfW = (elW * width) / canvas.width;
+            const pdfH = (elH * height) / canvas.height;
+
+            f.addToPage(page, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
         }
 
-        // MOTOR DE CÁLCULO (Permanece para os primeiros 36 campos)
+        // MOTOR DE CÁLCULO (O mesmo que você já usa)
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
@@ -172,31 +188,26 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             'this.getField("c36").value = getDado(this.getField("c35").value);'
         ].join('\n');
 
-        const action = docContext.obj({
+        const action = pdfDoc.context.obj({
             Type: 'Action',
             S: 'JavaScript',
             JS: PDFString.of(scriptMotor)
         });
 
         const triggerIndices = [0, 1, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34]; 
+        const allFields = form.getFields();
         triggerIndices.forEach(idx => {
-            fields[idx].acroField.dict.set(PDFName.of('AA'), docContext.obj({ K: action, V: action }));
+            allFields[idx].acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ K: action, V: action }));
         });
-
-        const acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-        if (acroForm) {
-            const acroFormDict = docContext.lookup(acroForm);
-            acroFormDict.set(PDFName.of('NeedAppearances'), docContext.obj(true));
-        }
 
         const finalPdfBytes = await pdfDoc.save();
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = "ficha_RPG_43_campos.pdf";
+        a.href = URL.createObjectURL(blob);
+        a.download = "ficha_interativa.pdf";
         a.click();
     } catch (err) {
+        console.error(err);
         alert("Erro técnico: " + err.message);
     }
 });
