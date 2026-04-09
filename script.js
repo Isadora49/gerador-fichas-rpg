@@ -14,12 +14,15 @@ const labels = [
     "C33 (Nível 15)", "C34 (Dado 15)", "C35 (Nível 16)", "C36 (Dado 16)",
     "C37 (Texto 1)", "C38 (Texto 2)", "C39 (Texto 3)", "C40 (Texto 4)",
     "C41 (Multi-linha 1)", "C42 (Multi-linha 2)", "C43 (Multi-linha 3)",
-    "C44 (Texto 5)" // <-- NOVO CAMPO ADICIONADO AQUI
+    "C44 (Texto 5)"
 ];
 
+const TOTAL_FIELDS = labels.length;
 let currentStep = 0;
 const canvas = document.getElementById('pdf-canvas');
 const wrapper = document.getElementById('canvas-wrapper');
+const statusEl = document.getElementById('status');
+const btnDownload = document.getElementById('btnDownload');
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
@@ -35,14 +38,15 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 1.5 });
         const context = canvas.getContext('2d');
+        
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         await page.render({ canvasContext: context, viewport: viewport }).promise;
         
         document.querySelectorAll('.marker').forEach(m => m.remove());
         currentStep = 0;
-        document.getElementById('status').innerText = "Clique para posicionar: " + labels[0];
-        document.getElementById('btnDownload').disabled = true;
+        statusEl.innerText = "Clique para posicionar: " + labels[0];
+        btnDownload.disabled = true;
     } catch (err) {
         alert("Erro no PDF: " + err.message);
     }
@@ -50,8 +54,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
 
 // CRIAÇÃO DO MARCADOR ARRASTÁVEL
 canvas.addEventListener('click', (e) => {
-    // Atualizado para 44
-    if (currentStep >= 44 || !pdfOriginalBytes) return;
+    if (currentStep >= TOTAL_FIELDS || !pdfOriginalBytes) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -59,9 +62,8 @@ canvas.addEventListener('click', (e) => {
 
     const marker = document.createElement('div');
     marker.className = 'marker';
-    marker.id = `field-${currentStep}`;
+    marker.id = field-${currentStep};
     
-    // Ajustado para que apenas os índices 40, 41 e 42 sejam caixas grandes
     const isMultiLine = (currentStep >= 40 && currentStep <= 42);
     const defaultW = isMultiLine ? 120 : 60;
     const defaultH = isMultiLine ? 60 : 20;
@@ -71,18 +73,17 @@ canvas.addEventListener('click', (e) => {
     marker.style.left = (x - defaultW / 2) + 'px';
     marker.style.top = (y - defaultH / 2) + 'px';
     
-    marker.innerHTML = `<span class="label-text">${labels[currentStep]}</span>`;
+    marker.innerHTML = <span class="label-text">${labels[currentStep]}</span>;
     wrapper.appendChild(marker);
 
     makeDraggable(marker);
 
     currentStep++;
-    // Atualizado para 44
-    if (currentStep === 44) {
-        document.getElementById('status').innerText = "Todos os campos posicionados!";
-        document.getElementById('btnDownload').disabled = false;
+    if (currentStep === TOTAL_FIELDS) {
+        statusEl.innerText = "Todos os campos posicionados!";
+        btnDownload.disabled = false;
     } else {
-        document.getElementById('status').innerText = "Posicione: " + labels[currentStep];
+        statusEl.innerText = "Posicione: " + labels[currentStep];
     }
 });
 
@@ -93,10 +94,7 @@ function makeDraggable(el) {
     el.addEventListener('mousedown', (e) => {
         if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return; 
         isDragging = true;
-        offset = {
-            x: e.clientX - el.offsetLeft,
-            y: e.clientY - el.offsetTop
-        };
+        offset = { x: e.clientX - el.offsetLeft, y: e.clientY - el.offsetTop };
     });
 
     document.addEventListener('mousemove', (e) => {
@@ -109,52 +107,43 @@ function makeDraggable(el) {
 }
 
 // GERAÇÃO DO PDF FINAL
-document.getElementById('btnDownload').addEventListener('click', async () => {
+btnDownload.addEventListener('click', async () => {
     try {
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
         const { width, height } = page.getSize();
+        
+        const indicesEsquerda = [36, 37, 40, 41, 42, 43];
+        const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
+        const opcoesClasses = [' ', 'Tank', 'Hibrido', 'Assassino', 'Destruidor', 'Arcano', 'Mentalista', 'Vitalista', 'Invocador', 'Elementalista'];
+        
+        const cWidth = canvas.width;
+        const cHeight = canvas.height;
 
-        // Atualizado para 44
-        for (let i = 0; i < 44; i++) {
-            const el = document.getElementById(`field-${i}`);
+        for (let i = 0; i < TOTAL_FIELDS; i++) {
+            const el = document.getElementById(field-${i});
             if (!el) continue;
 
-            let name = (i === 3) ? 'res' : (i === 6) ? 'res2' : `c${i+1}`;
+            let name = (i === 3) ? 'res' : (i === 6) ? 'res2' : c${i+1};
             let f;
 
             if (i === 0) {
                 f = form.createDropdown(name);
-                const opcoesClasses = [
-                    ' ', 'Tank', 'Hibrido', 'Assassino', 'Destruidor', 
-                    'Arcano', 'Mentalista', 'Vitalista', 'Invocador', 'Elementalista'
-                ];
                 f.addOptions(opcoesClasses);
                 f.select(' ');
             } else {
                 f = form.createTextField(name);
                 if (i < 36) {
-                    const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
                     f.setText(dadosIndices.includes(i) ? "1d4" : "0");
-                } 
-                // Ajustado para garantir que o novo campo (índice 43) seja linha única, como o C37
-                else if (i >= 40 && i <= 42) {
+                } else if (i >= 40 && i <= 42) {
                     f.enableMultiline();
                 }
 
-                // Correção de erro de aparência (/DA)
+                // Aparência e Fonte
                 f.acroField.dict.set(PDFName.of('DA'), PDFString.of('/Helvetica 12 Tf 0 g'));
                 f.setFontSize(12);
-
-                // --- NOVA LÓGICA DE ALINHAMENTO ---
-                // Adicionado o índice 43 (C44) na lista de alinhamento à esquerda
-                const indicesEsquerda = [36, 37, 40, 41, 42, 43];
-                if (indicesEsquerda.includes(i)) {
-                    f.setAlignment(TextAlignment.Left);
-                } else {
-                    f.setAlignment(TextAlignment.Center);
-                }
+                f.setAlignment(indicesEsquerda.includes(i) ? TextAlignment.Left : TextAlignment.Center);
             }
 
             const elLeft = parseFloat(el.style.left);
@@ -162,64 +151,53 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             const elW = el.offsetWidth;
             const elH = el.offsetHeight;
 
-            const pdfX = (elLeft * width) / canvas.width;
-            const pdfY = height - ((elTop * height) / canvas.height) - ((elH * height) / canvas.height);
-            const pdfW = (elW * width) / canvas.width;
-            const pdfH = (elH * height) / canvas.height;
-
             f.addToPage(page, { 
-                x: pdfX, 
-                y: pdfY, 
-                width: pdfW, 
-                height: pdfH,
+                x: (elLeft * width) / cWidth, 
+                y: height - ((elTop * height) / cHeight) - ((elH * height) / cHeight), 
+                width: (elW * width) / cWidth, 
+                height: (elH * height) / cHeight,
                 borderWidth: 0 
             });
         }
 
-        // --- SCRIPT DO MOTOR ---
+        // --- SCRIPT DO MOTOR OTIMIZADO ---
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
-            'var valBase1 = 0; var valBase2 = 0; var valBase3 = 0;',
-            'if (escolha == " " || escolha == "") { valBase1 = 0; valBase2 = 0; valBase3 = 0; }',
-            'else if (escolha == "Tank") { valBase1 = 8; valBase2 = 2; valBase3 = 2; }',
-            'else if (escolha == "Hibrido") { valBase1 = 4; valBase2 = 2; valBase3 = 4; }',
-            'else if (escolha == "Assassino") { valBase1 = 2; valBase2 = 2; valBase3 = 8; }',
-            'else if (escolha == "Destruidor") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
-            'else if (escolha == "Arcano") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
-            'else if (escolha == "Mentalista") { valBase1 = 2; valBase2 = 4; valBase3 = 2; }',
-            'else if (escolha == "Vitalista") { valBase1 = 2; valBase2 = 6; valBase3 = 2; }',
-            'else if (escolha == "Invocador") { valBase1 = 2; valBase2 = 6; valBase3 = 2; }',
-            'else if (escolha == "Elementalista") { valBase1 = 2; valBase2 = 5; valBase3 = 2; }',
+            'var bases = {',
+            '  "Tank": [8,2,2], "Hibrido": [4,2,4], "Assassino": [2,2,8],',
+            '  "Destruidor": [2,4,2], "Arcano": [2,4,2], "Mentalista": [2,4,2],',
+            '  "Vitalista": [2,6,2], "Invocador": [2,6,2], "Elementalista": [2,5,2]',
+            '};',
+            'var b = bases[escolha] || [0,0,0];',
+            'var valBase1 = b[0], valBase2 = b[1], valBase3 = b[2];',
+            '',
             'function getDado(nivel) {',
             '  nivel = Number(nivel) || 0;',
-            '  if (nivel >= 51) return "1d100"; if (nivel >= 27) return "1d50";',
+            '  if (nivel >= 51) return "1d100"; if (nivel >= 36) return "1d50";',
             '  if (nivel >= 26) return "1d20"; if (nivel >= 21) return "1d12";',
             '  if (nivel >= 16) return "1d10"; if (nivel >= 11) return "1d8";',
             '  if (nivel >= 6) return "1d6"; return "1d4";',
             '}',
+            '',
+            'function getD(nivel) {',
+            '  return (nivel >= 51)?100:(nivel >= 36)?50:(nivel >= 26)?20:(nivel >= 21)?12:(nivel >= 16)?10:(nivel >= 11)?8:(nivel >= 6)?6:4;',
+            '}',
+            '',
             'var n1 = Number(this.getField("c2").value) || 0;',
             'this.getField("c3").value = getDado(n1);',
-            'var d1N = (n1 >= 51)?100:(n1 >= 27)?50:(n1 >= 26)?20:(n1 >= 21)?12:(n1 >= 16)?10:(n1 >= 11)?8:(n1 >= 6)?6:4;',
-            'this.getField("res").value = (valBase1 * n1) + d1N;',
-            'this.getField("c8").value = (valBase3 * n1) + d1N;',
+            'this.getField("res").value = (valBase1 * n1) + getD(n1);',
+            'this.getField("c8").value = (valBase3 * n1) + getD(n1);',
+            '',
             'var n2 = Number(this.getField("c5").value) || 0;',
             'this.getField("c6").value = getDado(n2);',
-            'var d2N = (n2 >= 51)?100:(n2 >= 27)?50:(n2 >= 26)?20:(n2 >= 21)?12:(n2 >= 16)?10:(n2 >= 11)?8:(n2 >= 6)?6:4;',
-            'this.getField("res2").value = (valBase2 * n2) + d2N;',
-            'this.getField("c10").value = getDado(this.getField("c9").value);',
-            'this.getField("c12").value = getDado(this.getField("c11").value);',
-            'this.getField("c14").value = getDado(this.getField("c13").value);',
-            'this.getField("c16").value = getDado(this.getField("c15").value);',
-            'this.getField("c18").value = getDado(this.getField("c17").value);',
-            'this.getField("c20").value = getDado(this.getField("c19").value);',
-            'this.getField("c22").value = getDado(this.getField("c21").value);',
-            'this.getField("c24").value = getDado(this.getField("c23").value);',
-            'this.getField("c26").value = getDado(this.getField("c25").value);',
-            'this.getField("c28").value = getDado(this.getField("c27").value);',
-            'this.getField("c30").value = getDado(this.getField("c29").value);',
-            'this.getField("c32").value = getDado(this.getField("c31").value);',
-            'this.getField("c34").value = getDado(this.getField("c33").value);',
-            'this.getField("c36").value = getDado(this.getField("c35").value);'
+            'this.getField("res2").value = (valBase2 * n2) + getD(n2);',
+            '',
+            '// Loop para preencher os dados dos Níveis 3 ao 16 (c9 ao c36)',
+            'for (var i = 9; i <= 35; i += 2) {',
+            '  var nivelField = this.getField("c" + i);',
+            '  var dadoField = this.getField("c" + (i + 1));',
+            '  if (nivelField && dadoField) { dadoField.value = getDado(nivelField.value); }',
+            '}'
         ].join('\n');
 
         const action = pdfDoc.context.obj({
@@ -228,15 +206,29 @@ document.getElementById('btnDownload').addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
+        // ==========================================
+        // MUDANÇA AQUI: Aplicando os padrões PDF p/ Edge e Chrome
+        // ==========================================
+        
+        // 1. Configurando a Ação de Cálculo (C) e a Ordem de Cálculo (CO) no PDF
+        try {
+            const resField = form.getField('res');
+            resField.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ C: action }));
+            // Adiciona explicitamente o campo 'res' à Ordem de Cálculo do documento
+            form.acroForm.dict.set(PDFName.of('CO'), pdfDoc.context.obj([ resField.ref ]));
+        } catch (e) {
+            console.warn("Aviso na ordem de cálculo:", e);
+        }
+
+        // 2. Fallbacks de Gatilho de usuário: substituindo Keystroke (K) por Blur (Bl)
         const triggerNames = ['c1', 'c2', 'c5', 'c9', 'c11', 'c13', 'c15', 'c17', 'c19', 'c21', 'c23', 'c25', 'c27', 'c29', 'c31', 'c33', 'c35'];
         triggerNames.forEach(name => {
             try {
                 const field = form.getField(name);
-                field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ 
-                    K: action, 
-                    V: action 
-                }));
-            } catch(e) { console.warn("Campo não encontrado para trigger:", name); }
+                // Bl = Blur (perda de foco)
+                // V = Validate (quando o dado é confirmado)
+                field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ Bl: action, V: action }));
+            } catch(e) { console.warn("Campo não encontrado:", name); }
         });
 
         const finalPdfBytes = await pdfDoc.save();
