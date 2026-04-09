@@ -52,7 +52,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     }
 });
 
-// CRIAÇÃO DO MARCADOR ARRASTÁVEL
+// CRIAÇÃO DO MARCADOR
 canvas.addEventListener('click', (e) => {
     if (currentStep >= TOTAL_FIELDS || !pdfOriginalBytes) return;
 
@@ -115,9 +115,11 @@ btnDownload.addEventListener('click', async () => {
         const { width, height } = page.getSize();
         
         const indicesEsquerda = [36, 37, 40, 41, 42, 43];
+        // Indices que representam os campos de DADOS (C3, C6, C10...) e RESULTADOS (C4, C7, C8)
         const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
-        const opcoesClasses = [' ', 'Tank', 'Hibrido', 'Assassino', 'Destruidor', 'Arcano', 'Mentalista', 'Vitalista', 'Invocador', 'Elementalista'];
+        const resultadosIndices = [3, 6, 7]; // res, res2 e c8
         
+        const opcoesClasses = [' ', 'Tank', 'Hibrido', 'Assassino', 'Destruidor', 'Arcano', 'Mentalista', 'Vitalista', 'Invocador', 'Elementalista'];
         const cWidth = canvas.width;
         const cHeight = canvas.height;
 
@@ -140,7 +142,12 @@ btnDownload.addEventListener('click', async () => {
                     f.enableMultiline();
                 }
 
-                // Aparência e Fonte
+                // --- TRAVANDO OS CAMPOS AUTOMÁTICOS ---
+                // Se for um campo de Dado ou um campo de Resultado (Total), habilitamos o ReadOnly
+                if (dadosIndices.includes(i) || resultadosIndices.includes(i)) {
+                    f.enableReadOnly();
+                }
+
                 f.acroField.dict.set(PDFName.of('DA'), PDFString.of('/Helvetica 12 Tf 0 g'));
                 f.setFontSize(12);
                 f.setAlignment(indicesEsquerda.includes(i) ? TextAlignment.Left : TextAlignment.Center);
@@ -160,7 +167,6 @@ btnDownload.addEventListener('click', async () => {
             });
         }
 
-        // --- SCRIPT DO MOTOR OTIMIZADO ---
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var bases = {',
@@ -192,7 +198,6 @@ btnDownload.addEventListener('click', async () => {
             'this.getField("c6").value = getDado(n2);',
             'this.getField("res2").value = (valBase2 * n2) + getD(n2);',
             '',
-            '// Loop para preencher os dados dos Níveis 3 ao 16 (c9 ao c36)',
             'for (var i = 9; i <= 35; i += 2) {',
             '  var nivelField = this.getField("c" + i);',
             '  var dadoField = this.getField("c" + (i + 1));',
@@ -206,34 +211,19 @@ btnDownload.addEventListener('click', async () => {
             JS: PDFString.of(scriptMotor)
         });
 
-        // ==========================================
-        // SOLUÇÃO DEFINITIVA PARA EDGE E CHROME
-        // ==========================================
-        
-        // 1. O SEGREDO DO EDGE: Forçar a re-renderização visual dos campos.
-        // Isso avisa ao navegador que ele PRECISA redesenhar o texto quando o JS alterar um valor.
         form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
 
-        // 2. Configurando a Ação de Cálculo (C) e a Ordem de Cálculo (CO) globalmente
         try {
             const resField = form.getField('res');
             resField.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ C: action }));
             form.acroForm.dict.set(PDFName.of('CO'), pdfDoc.context.obj([ resField.ref ]));
-        } catch (e) {
-            console.warn("Aviso na ordem de cálculo:", e);
-        }
+        } catch (e) { console.warn(e); }
 
-        // 3. Fallbacks de Gatilho de usuário: Keystroke, Validate e Widget Blur
         const triggerNames = ['c1', 'c2', 'c5', 'c9', 'c11', 'c13', 'c15', 'c17', 'c19', 'c21', 'c23', 'c25', 'c27', 'c29', 'c31', 'c33', 'c35'];
         triggerNames.forEach(name => {
             try {
                 const field = form.getField(name);
-                
-                // Eventos nativos no nível da raiz lógica do campo
                 field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ K: action, V: action }));
-
-                // Evento Blur (Bl) aplicado diretamente no Widget (Anotação Visual).
-                // É assim que a Adobe especifica que a "Perda de Foco" deve ser tratada.
                 const widgets = field.acroField.getWidgets();
                 if (widgets && widgets.length > 0) {
                     const widget = widgets[0];
@@ -242,16 +232,16 @@ btnDownload.addEventListener('click', async () => {
                         widgetAA = pdfDoc.context.obj({});
                         widget.dict.set(PDFName.of('AA'), widgetAA);
                     }
-                    widgetAA.set(PDFName.of('Bl'), action); // Gatilho de perda de foco
+                    widgetAA.set(PDFName.of('Bl'), action);
                 }
-            } catch(e) { console.warn("Campo não encontrado:", name); }
+            } catch(e) { console.warn(name); }
         });
 
         const finalPdfBytes = await pdfDoc.save();
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = "ficha_centralizada.pdf";
+        a.download = "ficha_protegida.pdf";
         a.click();
     } catch (err) {
         console.error(err);
