@@ -3,7 +3,7 @@ const { PDFDocument, PDFName, PDFString, TextAlignment } = window.PDFLib || {};
 
 let pdfOriginalBytes = null;
 const labels = [
-    "C1 (Lsta Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
+    "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
     "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)",
     "C9 (Nível 3)", "C10 (Dado 3)", "C11 (Nível 4)", "C12 (Dado 4)",
     "C13 (Nível 5)", "C14 (Dado 5)", "C15 (Nível 6)", "C16 (Dado 6)",
@@ -207,27 +207,43 @@ btnDownload.addEventListener('click', async () => {
         });
 
         // ==========================================
-        // MUDANÇA AQUI: Aplicando os padrões PDF p/ Edge e Chrome
+        // SOLUÇÃO DEFINITIVA PARA EDGE E CHROME
         // ==========================================
         
-        // 1. Configurando a Ação de Cálculo (C) e a Ordem de Cálculo (CO) no PDF
+        // 1. O SEGREDO DO EDGE: Forçar a re-renderização visual dos campos.
+        // Isso avisa ao navegador que ele PRECISA redesenhar o texto quando o JS alterar um valor.
+        form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
+
+        // 2. Configurando a Ação de Cálculo (C) e a Ordem de Cálculo (CO) globalmente
         try {
             const resField = form.getField('res');
             resField.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ C: action }));
-            // Adiciona explicitamente o campo 'res' à Ordem de Cálculo do documento
             form.acroForm.dict.set(PDFName.of('CO'), pdfDoc.context.obj([ resField.ref ]));
         } catch (e) {
             console.warn("Aviso na ordem de cálculo:", e);
         }
 
-        // 2. Fallbacks de Gatilho de usuário: substituindo Keystroke (K) por Blur (Bl)
+        // 3. Fallbacks de Gatilho de usuário: Keystroke, Validate e Widget Blur
         const triggerNames = ['c1', 'c2', 'c5', 'c9', 'c11', 'c13', 'c15', 'c17', 'c19', 'c21', 'c23', 'c25', 'c27', 'c29', 'c31', 'c33', 'c35'];
         triggerNames.forEach(name => {
             try {
                 const field = form.getField(name);
-                // Bl = Blur (perda de foco)
-                // V = Validate (quando o dado é confirmado)
-                field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ Bl: action, V: action }));
+                
+                // Eventos nativos no nível da raiz lógica do campo
+                field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ K: action, V: action }));
+
+                // Evento Blur (Bl) aplicado diretamente no Widget (Anotação Visual).
+                // É assim que a Adobe especifica que a "Perda de Foco" deve ser tratada.
+                const widgets = field.acroField.getWidgets();
+                if (widgets && widgets.length > 0) {
+                    const widget = widgets[0];
+                    let widgetAA = widget.dict.get(PDFName.of('AA'));
+                    if (!widgetAA) {
+                        widgetAA = pdfDoc.context.obj({});
+                        widget.dict.set(PDFName.of('AA'), widgetAA);
+                    }
+                    widgetAA.set(PDFName.of('Bl'), action); // Gatilho de perda de foco
+                }
             } catch(e) { console.warn("Campo não encontrado:", name); }
         });
 
