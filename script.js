@@ -1,9 +1,10 @@
-// Adicionamos TextAlignment à desestruturação
 const { PDFDocument, PDFName, PDFString, TextAlignment } = window.PDFLib || {};
 
 let pdfOriginalBytes = null;
+
+// RÓTULOS ORIGINAIS
 const labels = [
-    "C1 (Lsta Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
+    "C1 (Lista Base)", "C2 (Nível 1)", "C3 (Dado 1)", "C4 (Total 1)", 
     "C5 (Nível 2)", "C6 (Dado 2)", "C7 (Total 2)", "C8 (Total 3)",
     "C9 (Nível 3)", "C10 (Dado 3)", "C11 (Nível 4)", "C12 (Dado 4)",
     "C13 (Nível 5)", "C14 (Dado 5)", "C15 (Nível 6)", "C16 (Dado 6)",
@@ -14,12 +15,33 @@ const labels = [
     "C33 (Nível 15)", "C34 (Dado 15)", "C35 (Nível 16)", "C36 (Dado 16)",
     "C37 (Texto 1)", "C38 (Texto 2)", "C39 (Texto 3)", "C40 (Texto 4)",
     "C41 (Multi-linha 1)", "C42 (Multi-linha 2)", "C43 (Multi-linha 3)",
-    "C44 (Texto 5)", 
-    // --- 3 NOVOS CAMPOS ADICIONADOS AQUI ---
-    "C45 (Texto 6 Central)", "C46 (Texto 7 Central)", "C47 (Texto 8 Central)"
+    "C44 (Texto 5)", "C45 (Texto 6 Central)", "C46 (Texto 7 Central)", "C47 (Texto 8 Central)"
 ];
 
-const TOTAL_FIELDS = labels.length;
+// --- NOVO: GERANDO AS CONFIGURAÇÕES INICIAIS BASEADO NAS SUAS REGRAS ORIGINAIS ---
+let fieldsConfig = labels.map((label, index) => {
+    const isDropdown = (index === 0);
+    const isMultiLine = (index >= 40 && index <= 42);
+    const indicesEsquerda = [36, 37, 40, 41, 42, 43];
+    const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
+    const resultadosIndices = [3, 6, 7];
+
+    let defaultName = (index === 3) ? 'res' : (index === 6) ? 'res2' : `c${index+1}`;
+    let defaultVal = dadosIndices.includes(index) ? "1d4" : (index < 36 && !dadosIndices.includes(index) && !resultadosIndices.includes(index) && index !== 0 ? "0" : "");
+
+    return {
+        id: index,
+        label: label,
+        pdfName: defaultName,
+        type: isDropdown ? 'dropdown' : 'text',
+        readOnly: dadosIndices.includes(index) || resultadosIndices.includes(index),
+        multiline: isMultiLine,
+        alignment: indicesEsquerda.includes(index) ? 'left' : 'center',
+        defaultValue: defaultVal
+    };
+});
+
+const TOTAL_FIELDS = fieldsConfig.length;
 let currentStep = 0;
 const canvas = document.getElementById('pdf-canvas');
 const wrapper = document.getElementById('canvas-wrapper');
@@ -47,7 +69,7 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         
         document.querySelectorAll('.marker').forEach(m => m.remove());
         currentStep = 0;
-        statusEl.innerText = "Clique para posicionar: " + labels[0];
+        statusEl.innerText = `Clique para posicionar: ${fieldsConfig[0].label} (Duplo clique no marcador para editar)`;
         btnDownload.disabled = true;
     } catch (err) {
         alert("Erro no PDF: " + err.message);
@@ -62,30 +84,34 @@ canvas.addEventListener('click', (e) => {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    const config = fieldsConfig[currentStep];
     const marker = document.createElement('div');
     marker.className = 'marker';
     marker.id = `field-${currentStep}`;
     
-    const isMultiLine = (currentStep >= 40 && currentStep <= 42);
-    const defaultW = isMultiLine ? 120 : 60;
-    const defaultH = isMultiLine ? 60 : 20;
+    const defaultW = config.multiline ? 120 : 60;
+    const defaultH = config.multiline ? 60 : 20;
 
     marker.style.width = defaultW + 'px';
     marker.style.height = defaultH + 'px';
     marker.style.left = (x - defaultW / 2) + 'px';
     marker.style.top = (y - defaultH / 2) + 'px';
     
-    marker.innerHTML = `<span class="label-text">${labels[currentStep]}</span>`;
+    marker.innerHTML = `<span class="label-text">${config.label}</span>`;
     wrapper.appendChild(marker);
 
     makeDraggable(marker);
 
+    // NOVO: Adiciona o evento de duplo clique para abrir a edição
+    let fieldIndex = currentStep;
+    marker.addEventListener('dblclick', () => openModal(fieldIndex));
+
     currentStep++;
     if (currentStep === TOTAL_FIELDS) {
-        statusEl.innerText = "Todos os campos posicionados!";
+        statusEl.innerText = "Todos os campos posicionados! (Duplo clique nos campos para editar funções)";
         btnDownload.disabled = false;
     } else {
-        statusEl.innerText = "Posicione: " + labels[currentStep];
+        statusEl.innerText = `Posicione: ${fieldsConfig[currentStep].label}`;
     }
 });
 
@@ -108,6 +134,49 @@ function makeDraggable(el) {
     document.addEventListener('mouseup', () => { isDragging = false; });
 }
 
+// --- NOVO: LÓGICA DO MODAL DE EDIÇÃO ---
+let currentEditingIndex = null;
+
+function openModal(index) {
+    currentEditingIndex = index;
+    const conf = fieldsConfig[index];
+    document.getElementById('m-label').value = conf.label;
+    document.getElementById('m-name').value = conf.pdfName;
+    document.getElementById('m-type').value = conf.type;
+    document.getElementById('m-default').value = conf.defaultValue;
+    document.getElementById('m-align').value = conf.alignment;
+    document.getElementById('m-multi').checked = conf.multiline;
+    document.getElementById('m-readonly').checked = conf.readOnly;
+    
+    document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+document.getElementById('m-cancel').addEventListener('click', () => {
+    document.getElementById('modal-overlay').style.display = 'none';
+});
+
+document.getElementById('m-save').addEventListener('click', () => {
+    if (currentEditingIndex === null) return;
+    const conf = fieldsConfig[currentEditingIndex];
+    
+    // Atualiza as configurações
+    conf.label = document.getElementById('m-label').value;
+    conf.pdfName = document.getElementById('m-name').value;
+    conf.type = document.getElementById('m-type').value;
+    conf.defaultValue = document.getElementById('m-default').value;
+    conf.alignment = document.getElementById('m-align').value;
+    conf.multiline = document.getElementById('m-multi').checked;
+    conf.readOnly = document.getElementById('m-readonly').checked;
+
+    // Atualiza o texto na interface
+    const marker = document.getElementById(`field-${currentEditingIndex}`);
+    if (marker) {
+        marker.querySelector('.label-text').innerText = conf.label;
+    }
+
+    document.getElementById('modal-overlay').style.display = 'none';
+});
+
 // GERAÇÃO DO PDF FINAL
 btnDownload.addEventListener('click', async () => {
     try {
@@ -115,11 +184,6 @@ btnDownload.addEventListener('click', async () => {
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
         const { width, height } = page.getSize();
-        
-        const indicesEsquerda = [36, 37, 40, 41, 42, 43];
-        // Indices que representam os campos de DADOS (C3, C6, C10...) e RESULTADOS (C4, C7, C8)
-        const dadosIndices = [2, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35];
-        const resultadosIndices = [3, 6, 7]; // res, res2 e c8
         
         const opcoesClasses = [' ', 'Tank', 'Hibrido', 'Assassino', 'Destruidor', 'Arcano', 'Mentalista', 'Vitalista', 'Invocador', 'Elementalista'];
         const cWidth = canvas.width;
@@ -129,33 +193,23 @@ btnDownload.addEventListener('click', async () => {
             const el = document.getElementById(`field-${i}`);
             if (!el) continue;
 
-            let name = (i === 3) ? 'res' : (i === 6) ? 'res2' : `c${i+1}`;
+            const config = fieldsConfig[i];
             let f;
 
-            if (i === 0) {
-                f = form.createDropdown(name);
+            // NOVO: Lê diretamente da configuração editável em vez de hardcoded!
+            if (config.type === 'dropdown') {
+                f = form.createDropdown(config.pdfName);
                 f.addOptions(opcoesClasses);
                 f.select(' ');
             } else {
-                f = form.createTextField(name);
-                if (i < 36) {
-                    f.setText(dadosIndices.includes(i) ? "1d4" : "0");
-                } else if (i >= 40 && i <= 42) {
-                    f.enableMultiline();
-                }
-
-                // --- TRAVANDO OS CAMPOS AUTOMÁTICOS ---
-                // Se for um campo de Dado ou um campo de Resultado (Total), habilitamos o ReadOnly
-                if (dadosIndices.includes(i) || resultadosIndices.includes(i)) {
-                    f.enableReadOnly();
-                }
+                f = form.createTextField(config.pdfName);
+                if (config.defaultValue) f.setText(config.defaultValue);
+                if (config.multiline) f.enableMultiline();
+                if (config.readOnly) f.enableReadOnly();
 
                 f.acroField.dict.set(PDFName.of('DA'), PDFString.of('/Helvetica 12 Tf 0 g'));
                 f.setFontSize(12);
-                
-                // Os novos campos (índices 44, 45, 46) não estão em indicesEsquerda,
-                // portanto, receberão TextAlignment.Center naturalmente aqui:
-                f.setAlignment(indicesEsquerda.includes(i) ? TextAlignment.Left : TextAlignment.Center);
+                f.setAlignment(config.alignment === 'left' ? TextAlignment.Left : TextAlignment.Center);
             }
 
             const elLeft = parseFloat(el.style.left);
@@ -172,6 +226,7 @@ btnDownload.addEventListener('click', async () => {
             });
         }
 
+        // MOTOR DE SCRIPT RPG MANTIDO INTACTO
         const scriptMotor = [
             'var escolha = this.getField("c1").value;',
             'var bases = {',
