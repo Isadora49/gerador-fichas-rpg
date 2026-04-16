@@ -2,64 +2,48 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG v3.0</title>
+    <title>Editor de Fichas RPG v3.0 - Dinâmico</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; }
+        #toolbar { padding: 10px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; z-index: 1000; }
         #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
         #canvas-wrapper { position: relative; margin: 20px; }
         canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
-        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        
+        button { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
         button:disabled { background: #555; cursor: not-allowed; }
+        input, select, textarea { background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; }
 
-        /* Marcador Interativo */
+        /* Marcador */
         .marker {
-            position: absolute;
-            background: rgba(231, 76, 60, 0.6);
-            border: 2px solid #e74c3c;
-            color: white;
-            font-size: 10px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            cursor: move;
-            resize: both;
-            overflow: hidden;
-            min-width: 30px;
-            min-height: 15px;
-            user-select: none;
-            z-index: 500;
+            position: absolute; background: rgba(231, 76, 60, 0.6); border: 2px solid #e74c3c;
+            color: white; font-size: 10px; font-weight: bold; display: flex; align-items: center;
+            justify-content: center; text-align: center; cursor: move; resize: both;
+            overflow: hidden; min-width: 30px; min-height: 15px; user-select: none; z-index: 500;
         }
-        .marker.selected { border-color: #00ff00; background: rgba(0, 255, 0, 0.4); }
 
-        /* Menu de Edição */
-        #field-menu {
-            position: fixed;
-            background: #2c3e50;
-            border: 1px solid #e74c3c;
-            padding: 10px;
-            border-radius: 8px;
-            display: none;
-            flex-direction: column;
-            gap: 8px;
-            z-index: 2000;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            width: 180px;
+        /* Modal de Configuração */
+        #config-modal {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #2c3e50; padding: 20px; border-radius: 10px; border: 2px solid #e74c3c;
+            z-index: 2000; width: 350px; box-shadow: 0 0 30px rgba(0,0,0,0.7);
         }
-        #field-menu label { font-size: 12px; color: #bdc3c7; }
-        #field-menu input, #field-menu select { background: #34495e; color: white; border: 1px solid #7f8c8d; padding: 4px; border-radius: 3px; }
+        #config-modal h3 { margin-top: 0; color: #e74c3c; }
+        .form-group { margin-bottom: 10px; display: flex; flex-direction: column; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1500; }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
     <input type="file" id="uploadPdf" accept="application/pdf">
+    <label>Qtd. Campos:</label>
+    <input type="number" id="qtyFields" value="10" style="width: 50px;">
+    <button id="btnStart">INICIAR/REINICIAR</button>
     <div id="status">Aguardando PDF...</div>
-    <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
+    <button id="btnDownload" disabled>GERAR PDF FINAL</button>
 </div>
 
 <div id="viewer-container">
@@ -68,27 +52,40 @@
     </div>
 </div>
 
-<div id="field-menu">
-    <strong id="menu-title" style="font-size: 14px; margin-bottom: 5px; display: block;">Editar Campo</strong>
-    <label>Nome (ID PDF):</label>
-    <input type="text" id="edit-name">
-    
-    <label>Alinhamento:</label>
-    <select id="edit-align">
-        <option value="Left">Esquerda</option>
-        <option value="Center">Centro</option>
-        <option value="Right">Direita</option>
-    </select>
-
-    <label>
-        <input type="checkbox" id="edit-multiline"> Multilinha
-    </label>
-    <label>
-        <input type="checkbox" id="edit-readonly"> Apenas Leitura
-    </label>
-    <hr style="width:100%; border:0; border-top:1px solid #444">
-    <button onclick="saveMenu()" style="padding: 5px; background: #27ae60;">Salvar</button>
-    <button onclick="closeMenu()" style="padding: 5px; background: #7f8c8d;">Fechar</button>
+<div class="overlay" id="overlay"></div>
+<div id="config-modal">
+    <h3>Configurar Campo</h3>
+    <div class="form-group">
+        <label>Nome do Campo (ID):</label>
+        <input type="text" id="editLabel">
+    </div>
+    <div class="form-group">
+        <label>Tipo:</label>
+        <select id="editType">
+            <option value="text">Texto Simples</option>
+            <option value="multiline">Texto Multi-linha</option>
+            <option value="dropdown">Menu Suspenso (Dropdown)</option>
+        </select>
+    </div>
+    <div id="dropdown-options" class="form-group" style="display:none;">
+        <label>Opções (separadas por vírgula):</label>
+        <input type="text" id="editOptions" placeholder="Opção 1, Opção 2">
+    </div>
+    <div class="form-group">
+        <label>Alinhamento:</label>
+        <select id="editAlign">
+            <option value="left">Esquerda</option>
+            <option value="center" selected>Centralizado</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label>Lógica de Cálculo (Acrobat JS):</label>
+        <textarea id="editLogic" rows="4" placeholder="Ex: event.value = this.getField('c1').value * 2;"></textarea>
+    </div>
+    <div style="display: flex; gap: 10px; margin-top: 15px;">
+        <button onclick="saveConfig()" style="background: #27ae60;">SALVAR</button>
+        <button onclick="closeConfig()" style="background: #95a5a6;">FECHAR</button>
+    </div>
 </div>
 
 <script src="script.js"></script>
