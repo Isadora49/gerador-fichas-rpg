@@ -2,44 +2,58 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG v2.0</title>
+    <title>Editor de Fichas RPG v3.0 - Custom Logic</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; }
-        
-        #main-area { display: flex; flex: 1; overflow: hidden; }
-        
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
+        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
         #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
         #canvas-wrapper { position: relative; margin: 20px; }
-        canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
-        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.8); cursor: crosshair; }
+        
+        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
         button:hover { background: #c0392b; }
         button:disabled { background: #555; cursor: not-allowed; }
-        
-        /* Painel de Edição de Propriedades */
-        #properties-panel { width: 300px; background: #222; border-left: 2px solid #e74c3c; padding: 20px; display: none; flex-direction: column; gap: 15px; overflow-y: auto; }
-        #properties-panel h3 { margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px; }
-        .prop-group { display: flex; flex-direction: column; gap: 5px; }
-        .prop-group label { font-size: 12px; color: #aaa; }
-        .prop-group input, .prop-group select, .prop-group textarea { background: #333; color: white; border: 1px solid #555; padding: 8px; border-radius: 4px; }
-        .prop-group textarea { resize: vertical; min-height: 80px; font-family: monospace; font-size: 11px; }
-        .checkbox-group { flex-direction: row; align-items: center; }
-        .checkbox-group input { width: auto; }
 
         /* Marcador Interativo */
         .marker {
-            position: absolute; background: rgba(231, 76, 60, 0.6); border: 2px solid #e74c3c; color: white;
-            font-size: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center;
-            text-align: center; cursor: move; resize: both; overflow: hidden; min-width: 40px; min-height: 20px;
-            user-select: none; z-index: 500;
+            position: absolute;
+            background: rgba(231, 76, 60, 0.4);
+            border: 2px solid #e74c3c;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            cursor: move;
+            resize: both;
+            overflow: hidden;
+            min-width: 40px;
+            min-height: 20px;
+            user-select: none;
+            z-index: 500;
         }
-        .marker .label-text { pointer-events: none; padding: 2px; }
-        
-        /* Botão de Engrenagem no Marcador */
-        .settings-btn { position: absolute; top: -2px; right: 0; font-size: 10px; cursor: pointer; background: #e74c3c; padding: 2px; border-radius: 0 0 0 5px; z-index: 510; }
-        .settings-btn:hover { background: #fff; color: #e74c3c; }
+
+        /* Menu de Edição Flutuante */
+        #edit-menu {
+            position: fixed;
+            background: #2c3e50;
+            border: 1px solid #e74c3c;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 2000;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+            width: 220px;
+        }
+        #edit-menu label { font-size: 12px; color: #ecf0f1; }
+        #edit-menu input, #edit-menu select { background: #34495e; color: white; border: 1px solid #7f8c8d; padding: 5px; border-radius: 3px; }
+        #edit-menu .menu-btns { display: flex; gap: 5px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -50,63 +64,29 @@
     <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
 </div>
 
-<div id="main-area">
-    <div id="viewer-container">
-        <div id="canvas-wrapper">
-            <canvas id="pdf-canvas"></canvas>
-        </div>
+<div id="viewer-container">
+    <div id="canvas-wrapper">
+        <canvas id="pdf-canvas"></canvas>
     </div>
+</div>
 
-    <div id="properties-panel">
-        <h3 id="panel-title">Editar Campo</h3>
-        <input type="hidden" id="prop-id">
-        
-        <div class="prop-group">
-            <label>Rótulo Visível (Apenas Editor)</label>
-            <input type="text" id="prop-label">
-        </div>
-        <div class="prop-group">
-            <label>Nome do Campo no PDF (Variável)</label>
-            <input type="text" id="prop-pdfName">
-        </div>
-        <div class="prop-group">
-            <label>Tipo de Campo</label>
-            <select id="prop-type">
-                <option value="text">Texto</option>
-                <option value="dropdown">Dropdown (Lista)</option>
-            </select>
-        </div>
-        <div class="prop-group" id="group-options" style="display: none;">
-            <label>Opções (Separadas por vírgula)</label>
-            <input type="text" id="prop-options">
-        </div>
-        <div class="prop-group">
-            <label>Valor Padrão</label>
-            <input type="text" id="prop-value">
-        </div>
-        <div class="prop-group checkbox-group">
-            <input type="checkbox" id="prop-multiline">
-            <label>Múltiplas Linhas</label>
-        </div>
-        <div class="prop-group checkbox-group">
-            <input type="checkbox" id="prop-readonly">
-            <label>Somente Leitura (Travar campo)</label>
-        </div>
-        <div class="prop-group">
-            <label>Alinhamento</label>
-            <select id="prop-align">
-                <option value="left">Esquerda</option>
-                <option value="center">Centro</option>
-                <option value="right">Direita</option>
-            </select>
-        </div>
-        <div class="prop-group">
-            <label>Lógica Customizada (Acrobat JS - Opcional)</label>
-            <textarea id="prop-script" placeholder="Ex: event.value = this.getField('c1').value * 2;"></textarea>
-        </div>
-        
-        <button id="btnSaveConfig" style="margin-top: 10px;">Salvar Configurações</button>
-        <button id="btnClosePanel" style="background: #555;">Fechar</button>
+<div id="edit-menu">
+    <label>Nome/Label do Campo:</label>
+    <input type="text" id="menu-label">
+    
+    <label>ID Interno (PDF):</label>
+    <input type="text" id="menu-id">
+
+    <label>Alinhamento:</label>
+    <select id="menu-align">
+        <option value="Left">Esquerda</option>
+        <option value="Center">Centro</option>
+        <option value="Right">Direita</option>
+    </select>
+
+    <div class="menu-btns">
+        <button onclick="saveFieldChanges()" style="background: #27ae60; flex:1">Salvar</button>
+        <button onclick="closeMenu()" style="background: #95a5a6; flex:1">Fechar</button>
     </div>
 </div>
 
