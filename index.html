@@ -8,51 +8,38 @@
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
         #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; }
+        
+        #main-area { display: flex; flex: 1; overflow: hidden; }
+        
         #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
         #canvas-wrapper { position: relative; margin: 20px; }
         canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
-        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #c0392b; }
         button:disabled { background: #555; cursor: not-allowed; }
         
+        /* Painel de Edição de Propriedades */
+        #properties-panel { width: 300px; background: #222; border-left: 2px solid #e74c3c; padding: 20px; display: none; flex-direction: column; gap: 15px; overflow-y: auto; }
+        #properties-panel h3 { margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px; }
+        .prop-group { display: flex; flex-direction: column; gap: 5px; }
+        .prop-group label { font-size: 12px; color: #aaa; }
+        .prop-group input, .prop-group select, .prop-group textarea { background: #333; color: white; border: 1px solid #555; padding: 8px; border-radius: 4px; }
+        .prop-group textarea { resize: vertical; min-height: 80px; font-family: monospace; font-size: 11px; }
+        .checkbox-group { flex-direction: row; align-items: center; }
+        .checkbox-group input { width: auto; }
+
         /* Marcador Interativo */
         .marker {
-            position: absolute;
-            background: rgba(231, 76, 60, 0.6);
-            border: 2px solid #e74c3c;
-            color: white;
-            font-size: 10px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            cursor: move;
-            resize: both;
-            overflow: hidden;
-            min-width: 30px;
-            min-height: 15px;
-            user-select: none;
-            z-index: 500;
+            position: absolute; background: rgba(231, 76, 60, 0.6); border: 2px solid #e74c3c; color: white;
+            font-size: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center;
+            text-align: center; cursor: move; resize: both; overflow: hidden; min-width: 40px; min-height: 20px;
+            user-select: none; z-index: 500;
         }
         .marker .label-text { pointer-events: none; padding: 2px; }
-
-        /* --- CSS DO NOVO MODAL DE EDIÇÃO --- */
-        #modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;
-        }
-        #modal-content {
-            background: #222; padding: 20px; border-radius: 8px; width: 350px;
-            border: 2px solid #e74c3c; display: flex; flex-direction: column; gap: 12px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.8);
-        }
-        .modal-row { display: flex; justify-content: space-between; align-items: center; }
-        .modal-row label { font-size: 14px; }
-        .modal-row input[type="text"], .modal-row select {
-            background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; width: 55%;
-        }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; }
-        .modal-actions button.cancel { background: #555; }
+        
+        /* Botão de Engrenagem no Marcador */
+        .settings-btn { position: absolute; top: -2px; right: 0; font-size: 10px; cursor: pointer; background: #e74c3c; padding: 2px; border-radius: 0 0 0 5px; z-index: 510; }
+        .settings-btn:hover { background: #fff; color: #e74c3c; }
     </style>
 </head>
 <body>
@@ -63,36 +50,63 @@
     <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
 </div>
 
-<div id="viewer-container">
-    <div id="canvas-wrapper">
-        <canvas id="pdf-canvas"></canvas>
+<div id="main-area">
+    <div id="viewer-container">
+        <div id="canvas-wrapper">
+            <canvas id="pdf-canvas"></canvas>
+        </div>
     </div>
-</div>
 
-<div id="modal-overlay">
-    <div id="modal-content">
-        <h3 style="margin-top:0; border-bottom: 1px solid #444; padding-bottom: 10px;">Configurar Campo</h3>
-        <div class="modal-row"><label>Nome de Exibição:</label><input type="text" id="m-label"></div>
-        <div class="modal-row"><label>Nome no PDF:</label><input type="text" id="m-name" title="Atenção: Mudar este nome pode quebrar os scripts de cálculo automático."></div>
-        <div class="modal-row"><label>Tipo de Campo:</label>
-            <select id="m-type">
+    <div id="properties-panel">
+        <h3 id="panel-title">Editar Campo</h3>
+        <input type="hidden" id="prop-id">
+        
+        <div class="prop-group">
+            <label>Rótulo Visível (Apenas Editor)</label>
+            <input type="text" id="prop-label">
+        </div>
+        <div class="prop-group">
+            <label>Nome do Campo no PDF (Variável)</label>
+            <input type="text" id="prop-pdfName">
+        </div>
+        <div class="prop-group">
+            <label>Tipo de Campo</label>
+            <select id="prop-type">
                 <option value="text">Texto</option>
-                <option value="dropdown">Lista (Dropdown)</option>
+                <option value="dropdown">Dropdown (Lista)</option>
             </select>
         </div>
-        <div class="modal-row"><label>Valor Padrão:</label><input type="text" id="m-default"></div>
-        <div class="modal-row"><label>Alinhamento:</label>
-            <select id="m-align">
-                <option value="center">Centro</option>
+        <div class="prop-group" id="group-options" style="display: none;">
+            <label>Opções (Separadas por vírgula)</label>
+            <input type="text" id="prop-options">
+        </div>
+        <div class="prop-group">
+            <label>Valor Padrão</label>
+            <input type="text" id="prop-value">
+        </div>
+        <div class="prop-group checkbox-group">
+            <input type="checkbox" id="prop-multiline">
+            <label>Múltiplas Linhas</label>
+        </div>
+        <div class="prop-group checkbox-group">
+            <input type="checkbox" id="prop-readonly">
+            <label>Somente Leitura (Travar campo)</label>
+        </div>
+        <div class="prop-group">
+            <label>Alinhamento</label>
+            <select id="prop-align">
                 <option value="left">Esquerda</option>
+                <option value="center">Centro</option>
+                <option value="right">Direita</option>
             </select>
         </div>
-        <div class="modal-row"><label>Multilinha:</label><input type="checkbox" id="m-multi"></div>
-        <div class="modal-row"><label>Apenas Leitura:</label><input type="checkbox" id="m-readonly"></div>
-        <div class="modal-actions">
-            <button class="cancel" id="m-cancel">Cancelar</button>
-            <button id="m-save">Salvar Modificações</button>
+        <div class="prop-group">
+            <label>Lógica Customizada (Acrobat JS - Opcional)</label>
+            <textarea id="prop-script" placeholder="Ex: event.value = this.getField('c1').value * 2;"></textarea>
         </div>
+        
+        <button id="btnSaveConfig" style="margin-top: 10px;">Salvar Configurações</button>
+        <button id="btnClosePanel" style="background: #555;">Fechar</button>
     </div>
 </div>
 
