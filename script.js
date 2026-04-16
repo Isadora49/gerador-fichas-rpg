@@ -1,148 +1,157 @@
 const { PDFDocument, PDFName, PDFString, TextAlignment } = window.PDFLib || {};
 
 let pdfOriginalBytes = null;
-let fieldConfigs = []; // Armazena a configuração de cada campo
 let currentStep = 0;
-let totalToCreate = 0;
-let editingFieldId = null;
+let totalFieldsToCreate = 0;
+let selectedMarker = null; // Marcador sendo editado no momento
+
+// Armazena as configurações de cada campo
+// Estrutura: { id: { name, label, type, align, logic, x, y, w, h } }
+const fieldsData = {};
 
 const canvas = document.getElementById('pdf-canvas');
 const wrapper = document.getElementById('canvas-wrapper');
 const statusEl = document.getElementById('status');
 const btnDownload = document.getElementById('btnDownload');
-const modal = document.getElementById('config-modal');
+const fieldMenu = document.getElementById('field-menu');
 const overlay = document.getElementById('overlay');
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// INICIALIZAÇÃO
-document.getElementById('btnStart').addEventListener('click', () => {
-    totalToCreate = parseInt(document.getElementById('qtyFields').value) || 0;
-    if (!pdfOriginalBytes) return alert("Carregue um PDF primeiro!");
-    
-    // Reset
-    document.querySelectorAll('.marker').forEach(m => m.remove());
-    fieldConfigs = [];
-    currentStep = 0;
-    btnDownload.disabled = true;
-    statusEl.innerText = `Clique para posicionar Campo 1 de ${totalToCreate}`;
-});
-
+// CARREGAMENTO DO PDF
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
         const arrayBuffer = await file.arrayBuffer();
-        pdfOriginalBytes = arrayBuffer.slice(0);
+        pdfOriginalBytes = arrayBuffer.slice(0); 
         const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 1.5 });
         const context = canvas.getContext('2d');
+        
         canvas.height = viewport.height;
         canvas.width = viewport.width;
         await page.render({ canvasContext: context, viewport: viewport }).promise;
-        statusEl.innerText = "PDF Carregado. Defina a quantidade e clique em Iniciar.";
-    } catch (err) { alert("Erro no PDF: " + err.message); }
+        
+        // Reset
+        document.querySelectorAll('.marker').forEach(m => m.remove());
+        currentStep = 0;
+        totalFieldsToCreate = parseInt(document.getElementById('totalFieldsInput').value) || 10;
+        statusEl.innerText = `Clique no PDF para posicionar o campo 1 de ${totalFieldsToCreate}`;
+        btnDownload.disabled = true;
+    } catch (err) {
+        alert("Erro no PDF: " + err.message);
+    }
 });
 
-// CLIQUE NO CANVAS PARA CRIAR MARCADOR
+// CLIQUE PARA ADICIONAR CAMPO
 canvas.addEventListener('click', (e) => {
-    if (currentStep >= totalToCreate || !pdfOriginalBytes) return;
+    if (!pdfOriginalBytes || currentStep >= totalFieldsToCreate) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const id = currentStep;
-    const config = {
-        id: id,
-        label: `Campo ${id + 1}`,
-        type: 'text',
-        align: 'center',
-        options: '',
-        logic: '',
-        width: 60,
-        height: 20
-    };
-    fieldConfigs.push(config);
+    const id = `field-${currentStep}`;
+    createMarker(id, x, y);
 
+    currentStep++;
+    updateStatus();
+});
+
+function createMarker(id, x, y) {
     const marker = document.createElement('div');
     marker.className = 'marker';
-    marker.id = `marker-${id}`;
+    marker.id = id;
+    
+    // Configuração padrão inicial
+    fieldsData[id] = {
+        name: `campo_${id.split('-')[1]}`,
+        label: `Campo ${parseInt(id.split('-')[1]) + 1}`,
+        type: 'text',
+        align: 'center',
+        logic: '',
+        initialValue: '0'
+    };
+
+    marker.style.width = '60px';
+    marker.style.height = '20px';
     marker.style.left = (x - 30) + 'px';
     marker.style.top = (y - 10) + 'px';
-    marker.style.width = config.width + 'px';
-    marker.style.height = config.height + 'px';
-    marker.innerHTML = `<span id="label-text-${id}">${config.label}</span>`;
+    marker.innerHTML = `<span class="label-text">${fieldsData[id].label}</span>`;
     
-    // Abrir menu com botão direito
-    marker.oncontextmenu = (ev) => {
-        ev.preventDefault();
-        openConfig(id);
+    // Abrir menu com clique duplo
+    marker.ondblclick = (e) => {
+        e.stopPropagation();
+        openMenu(id);
     };
 
     wrapper.appendChild(marker);
     makeDraggable(marker);
+}
 
-    currentStep++;
-    if (currentStep === totalToCreate) {
-        statusEl.innerText = "Todos posicionados! Botão direito p/ editar.";
+function updateStatus() {
+    if (currentStep >= totalFieldsToCreate) {
+        statusEl.innerText = "Todos posicionados! (Dê clique duplo num campo para editar lógica)";
         btnDownload.disabled = false;
     } else {
-        statusEl.innerText = `Posicione: Campo ${currentStep + 1}`;
+        statusEl.innerText = `Posicione o campo ${currentStep + 1} de ${totalFieldsToCreate}`;
     }
-});
+}
 
-// FUNÇÕES DO MODAL
-function openConfig(id) {
-    editingFieldId = id;
-    const cfg = fieldConfigs[id];
-    document.getElementById('editLabel').value = cfg.label;
-    document.getElementById('editType').value = cfg.type;
-    document.getElementById('editAlign').value = cfg.align;
-    document.getElementById('editOptions').value = cfg.options;
-    document.getElementById('editLogic').value = cfg.logic;
+// LOGICA DO MENU (MODAL)
+function openMenu(id) {
+    selectedMarker = id;
+    const data = fieldsData[id];
+    document.getElementById('cfg-name').value = data.name;
+    document.getElementById('cfg-label').value = data.label;
+    document.getElementById('cfg-type').value = data.type;
+    document.getElementById('cfg-align').value = data.align;
+    document.getElementById('cfg-logic').value = data.logic;
     
-    document.getElementById('dropdown-options').style.display = (cfg.type === 'dropdown') ? 'block' : 'none';
-    modal.style.display = 'block';
+    fieldMenu.style.display = 'flex';
     overlay.style.display = 'block';
 }
 
-document.getElementById('editType').onchange = (e) => {
-    document.getElementById('dropdown-options').style.display = (e.target.value === 'dropdown') ? 'block' : 'none';
-};
-
-function saveConfig() {
-    const cfg = fieldConfigs[editingFieldId];
-    cfg.label = document.getElementById('editLabel').value;
-    cfg.type = document.getElementById('editType').value;
-    cfg.align = document.getElementById('editAlign').value;
-    cfg.options = document.getElementById('editOptions').value;
-    cfg.logic = document.getElementById('editLogic').value;
-    
-    document.getElementById(`label-text-${editingFieldId}`).innerText = cfg.label;
-    closeConfig();
-}
-
-function closeConfig() {
-    modal.style.display = 'none';
+function closeMenu() {
+    fieldMenu.style.display = 'none';
     overlay.style.display = 'none';
 }
 
+function saveFieldConfig() {
+    if (!selectedMarker) return;
+    const data = fieldsData[selectedMarker];
+    data.name = document.getElementById('cfg-name').value;
+    data.label = document.getElementById('cfg-label').value;
+    data.type = document.getElementById('cfg-type').value;
+    data.align = document.getElementById('cfg-align').value;
+    data.logic = document.getElementById('cfg-logic').value;
+
+    // Atualiza o texto visual no marcador
+    document.getElementById(selectedMarker).querySelector('.label-text').innerText = data.label;
+    
+    closeMenu();
+}
+
+// DRAG AND DROP
 function makeDraggable(el) {
-    let isDragging = false; let offset = { x: 0, y: 0 };
+    let isDragging = false;
+    let offset = { x: 0, y: 0 };
+
     el.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return; // Só arrasta com botão esquerdo
-        if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return;
+        if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return; 
         isDragging = true;
         offset = { x: e.clientX - el.offsetLeft, y: e.clientY - el.offsetTop };
     });
+
     document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
         el.style.left = (e.clientX - offset.x) + 'px';
         el.style.top = (e.clientY - offset.y) + 'px';
     });
+
     document.addEventListener('mouseup', () => { isDragging = false; });
 }
 
@@ -156,58 +165,66 @@ btnDownload.addEventListener('click', async () => {
         const cWidth = canvas.width;
         const cHeight = canvas.height;
 
-        for (let cfg of fieldConfigs) {
-            const el = document.getElementById(`marker-${cfg.id}`);
-            const name = cfg.label.replace(/\s+/g, '_'); // Nome sem espaços
+        // Itera sobre todos os marcadores criados
+        for (const id in fieldsData) {
+            const config = fieldsData[id];
+            const el = document.getElementById(id);
+            if (!el) continue;
+
             let f;
-
-            if (cfg.type === 'dropdown') {
-                f = form.createDropdown(name);
-                const opts = cfg.options.split(',').map(o => o.trim()).filter(o => o !== "");
-                f.addOptions(opts.length > 0 ? opts : [' ']);
+            if (config.type === 'dropdown') {
+                f = form.createDropdown(config.name);
+                f.addOptions([' ', 'Opção 1', 'Opção 2']); // Exemplo, poderia ser dinâmico também
             } else {
-                f = form.createTextField(name);
-                if (cfg.type === 'multiline') f.enableMultiline();
+                f = form.createTextField(config.name);
+                if (config.type === 'multiline') f.enableMultiline();
+                if (config.type === 'readonly') f.enableReadOnly();
             }
 
-            // Alinhamento e Estilo
-            f.setAlignment(cfg.align === 'left' ? TextAlignment.Left : TextAlignment.Center);
-            f.setFontSize(11);
+            // Alinhamento
+            const alignMap = { 'left': TextAlignment.Left, 'center': TextAlignment.Center, 'right': TextAlignment.Right };
+            f.setAlignment(alignMap[config.align] || TextAlignment.Center);
+            f.setFontSize(12);
 
-            // Se houver lógica, aplicamos ao cálculo do campo
-            if (cfg.logic.trim() !== "") {
-                const action = pdfDoc.context.obj({
-                    Type: 'Action',
-                    S: 'JavaScript',
-                    JS: PDFString.of(cfg.logic)
-                });
-                // Aplica no evento de Cálculo (C) e no formato (F) para garantir atualização
-                f.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ 
-                    C: action
-                }));
-            }
-
+            // Coordenadas
             const elLeft = parseFloat(el.style.left);
             const elTop = parseFloat(el.style.top);
             const elW = el.offsetWidth;
             const elH = el.offsetHeight;
 
-            f.addToPage(page, {
-                x: (elLeft * width) / cWidth,
-                y: height - ((elTop * height) / cHeight) - ((elH * height) / cHeight),
-                width: (elW * width) / cWidth,
+            f.addToPage(page, { 
+                x: (elLeft * width) / cWidth, 
+                y: height - ((elTop * height) / cHeight) - ((elH * height) / cHeight), 
+                width: (elW * width) / cWidth, 
                 height: (elH * height) / cHeight,
-                borderWidth: 0
+                borderWidth: 0 
             });
+
+            // Lógica de Script (Calculada)
+            if (config.logic.trim() !== "") {
+                const fieldAction = pdfDoc.context.obj({
+                    Type: 'Action',
+                    S: 'JavaScript',
+                    JS: PDFString.of(config.logic)
+                });
+                // Aplica a lógica no evento de Cálculo e de Validação para garantir funcionamento
+                f.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ 
+                    C: fieldAction, // OnCalculate
+                    K: fieldAction  // OnKeystroke
+                }));
+            }
         }
 
         form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
-        
+
         const finalPdfBytes = await pdfDoc.save();
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = "ficha_customizada.pdf";
+        a.download = "ficha_editavel_dinamica.pdf";
         a.click();
-    } catch (err) { alert("Erro ao gerar PDF: " + err.message); }
+    } catch (err) {
+        console.error(err);
+        alert("Erro técnico: " + err.message);
+    }
 });
