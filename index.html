@@ -7,45 +7,64 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        #toolbar { padding: 10px 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; flex-wrap: wrap; }
+        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; flex-wrap: wrap; }
         #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
         #canvas-wrapper { position: relative; margin: 20px; }
         canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
         
-        button { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
         button:disabled { background: #555; cursor: not-allowed; }
-        input[type="number"], input[type="text"], select { background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; }
+        input[type="number"] { width: 60px; padding: 5px; border-radius: 3px; border: none; }
 
-        /* Marcador */
+        /* Menu de Configuração do Campo */
+        #field-config-menu {
+            position: absolute;
+            background: #2c3e50;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 2000;
+            border: 1px solid #e74c3c;
+            width: 200px;
+        }
+        #field-config-menu select, #field-config-menu input {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 5px;
+            background: #34495e;
+            color: white;
+            border: 1px solid #555;
+        }
+
         .marker {
-            position: absolute; background: rgba(231, 76, 60, 0.6); border: 2px solid #e74c3c;
-            color: white; font-size: 10px; font-weight: bold; display: flex; align-items: center;
-            justify-content: center; text-align: center; cursor: move; resize: both; overflow: hidden;
-            min-width: 30px; min-height: 15px; user-select: none; z-index: 500;
+            position: absolute;
+            background: rgba(231, 76, 60, 0.6);
+            border: 2px solid #e74c3c;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            cursor: move;
+            resize: both;
+            overflow: hidden;
+            min-width: 30px;
+            min-height: 15px;
+            user-select: none;
+            z-index: 500;
         }
-
-        /* Menu de Edição (Modal) */
-        #field-menu {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: #2c3e50; padding: 20px; border-radius: 8px; border: 2px solid #e74c3c;
-            display: none; flex-direction: column; gap: 10px; z-index: 2000; width: 350px;
-            box-shadow: 0 0 30px rgba(0,0,0,0.8);
-        }
-        #field-menu h3 { margin: 0 0 10px 0; font-size: 16px; color: #e74c3c; }
-        .menu-row { display: flex; flex-direction: column; gap: 5px; }
-        .menu-row label { font-size: 12px; color: #ccc; }
-        .menu-buttons { display: flex; gap: 10px; margin-top: 10px; }
-        #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); display:none; z-index: 1500; }
+        .marker .label-text { pointer-events: none; padding: 2px; }
+        .remove-btn { position: absolute; top: 0; right: 0; background: black; color: white; border: none; cursor: pointer; font-size: 8px; }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
     <input type="file" id="uploadPdf" accept="application/pdf">
-    <div>
-        <label>Total de Campos:</label>
-        <input type="number" id="totalFieldsInput" value="10" min="1" style="width: 50px;">
-    </div>
+    <label>Limite de Campos: <input type="number" id="limitFields" placeholder="Ex: 10" min="1"></label>
     <div id="status">Aguardando PDF...</div>
     <button id="btnDownload" disabled>GERAR PDF FINAL</button>
 </div>
@@ -56,42 +75,20 @@
     </div>
 </div>
 
-<div id="overlay"></div>
-<div id="field-menu">
-    <h3>Configurar Campo</h3>
-    <div class="menu-row">
-        <label>Nome do Campo (ID no PDF):</label>
-        <input type="text" id="cfg-name" placeholder="ex: forca_total">
-    </div>
-    <div class="menu-row">
-        <label>Etiqueta Visual:</label>
-        <input type="text" id="cfg-label" placeholder="ex: Força">
-    </div>
-    <div class="menu-row">
-        <label>Tipo de Campo:</label>
-        <select id="cfg-type">
-            <option value="text">Texto Simples</option>
-            <option value="multiline">Texto Multi-linha</option>
-            <option value="dropdown">Menu Suspenso (Dropdown)</option>
-            <option value="readonly">Apenas Leitura (Calculado)</option>
-        </select>
-    </div>
-    <div class="menu-row">
-        <label>Alinhamento:</label>
-        <select id="cfg-align">
-            <option value="center">Centralizado</option>
-            <option value="left">Esquerda</option>
-            <option value="right">Direita</option>
-        </select>
-    </div>
-    <div class="menu-row">
-        <label>Lógica JavaScript (opcional):</label>
-        <textarea id="cfg-logic" rows="3" style="background:#1a1a1a; color:#0f0; border:1px solid #444; font-family:monospace; font-size:11px;" placeholder="event.value = this.getField('c1').value * 2;"></textarea>
-    </div>
-    <div class="menu-buttons">
-        <button onclick="saveFieldConfig()" style="background: #27ae60;">SALVAR</button>
-        <button onclick="closeMenu()" style="background: #7f8c8d;">FECHAR</button>
-    </div>
+<div id="field-config-menu">
+    <label>Tipo de Lógica:</label>
+    <select id="fieldType">
+        <option value="text">Texto Simples</option>
+        <option value="multiline">Texto Multi-linha</option>
+        <option value="class_dropdown">Menu de Classes (C1)</option>
+        <option value="nivel">Nível (Gatilho)</option>
+        <option value="dado_auto">Dado Automático</option>
+        <option value="resultado">Total (Calculado)</option>
+    </select>
+    <label>Nome/ID (ex: c1, c2):</label>
+    <input type="text" id="fieldName" placeholder="Obrigatório">
+    <button id="btnConfirmField">Adicionar Campo</button>
+    <button id="btnCancelField" style="background:#555; margin-top:5px;">Cancelar</button>
 </div>
 
 <script src="script.js"></script>
