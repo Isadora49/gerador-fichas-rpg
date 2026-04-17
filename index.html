@@ -2,91 +2,82 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG v3.0 - Dinâmico</title>
+    <title>Editor de Fichas RPG v3.0 - Menu Dinâmico</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        #toolbar { padding: 10px 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 10px; align-items: center; z-index: 1000; flex-wrap: wrap; }
-        #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
-        #canvas-wrapper { position: relative; margin: 20px; }
-        canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         
-        button { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; flex-wrap: wrap; }
+        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #c0392b; }
         button:disabled { background: #555; cursor: not-allowed; }
-        input[type="number"] { width: 50px; padding: 5px; border-radius: 4px; border: none; }
+        #btnConfig { background: #2980b9; } #btnConfig:hover { background: #1f618d; }
+        #btnFinish { background: #27ae60; display: none; } #btnFinish:hover { background: #1e8449; }
+        
+        /* Painel de Configurações Dinâmico */
+        #config-panel { display: none; background: #2c3e50; padding: 15px; border-bottom: 3px solid #34495e; max-height: 40vh; overflow-y: auto; font-size: 13px; }
+        .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        .config-group { display: flex; flex-direction: column; gap: 5px; }
+        .config-group label { font-weight: bold; color: #f39c12; }
+        .config-group input, .config-group textarea { background: #1a1a1a; color: white; border: 1px solid #555; padding: 8px; border-radius: 4px; font-family: monospace; }
+        .config-group textarea { height: 80px; resize: vertical; }
 
-        /* Marcador */
-        .marker {
-            position: absolute;
-            background: rgba(231, 76, 60, 0.4);
-            border: 2px solid #e74c3c;
-            color: white;
-            font-size: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: move;
-            resize: both;
-            overflow: hidden;
-            min-width: 40px;
-            min-height: 20px;
-            z-index: 500;
-        }
-
-        /* Menu de Configuração do Campo */
-        #field-menu {
-            position: fixed;
-            background: #2c3e50;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            display: none;
-            z-index: 2000;
-            border: 1px solid #e74c3c;
-            width: 200px;
-        }
-        #field-menu label { display: block; font-size: 12px; margin-bottom: 5px; color: #ecf0f1; }
-        #field-menu select, #field-menu input { width: 100%; margin-bottom: 10px; background: #34495e; color: white; border: 1px solid #7f8c8d; padding: 4px; }
-        .menu-btns { display: flex; gap: 5px; }
-        .btn-delete { background: #c0392b; flex: 1; }
-        .btn-save { background: #27ae60; flex: 1; }
+        #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; align-items: flex-start; }
+        #canvas-wrapper { position: relative; margin: 20px; }
+        canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
+        
+        .marker { position: absolute; background: rgba(231, 76, 60, 0.6); border: 2px solid #e74c3c; color: white; font-size: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center; text-align: center; cursor: move; resize: both; overflow: hidden; min-width: 30px; min-height: 15px; user-select: none; z-index: 500; }
+        .marker .label-text { pointer-events: none; padding: 2px; }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
     <input type="file" id="uploadPdf" accept="application/pdf">
-    <label>Limite de Campos:</label>
-    <input type="number" id="fieldLimit" value="50" min="1">
-    <button id="btnAddField" disabled>+ NOVO CAMPO</button>
+    <button id="btnConfig">⚙️ Menu de Lógica</button>
+    <button id="btnFinish">✅ FINALIZAR MARCAÇÕES</button>
     <div id="status">Aguardando PDF...</div>
-    <button id="btnDownload" disabled>GERAR PDF FINAL</button>
+    <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
+</div>
+
+<div id="config-panel">
+    <p style="margin-top: 0; margin-bottom: 15px; color:#bdc3c7;">Configure as lógicas aqui. Os números abaixo representam o ÍNDICE dos campos (0 é o 1º campo, 1 é o 2º, etc).</p>
+    <div class="config-grid">
+        <div class="config-group">
+            <label>Limite de Campos a Criar:</label>
+            <input type="number" id="confLimit" value="47" title="Deixe 0 para criar campos infinitos!">
+        </div>
+        <div class="config-group">
+            <label>Classes e Status (Formato JSON):</label>
+            <textarea id="confClasses">{"Tank": [8,2,2], "Hibrido": [4,2,4], "Assassino": [2,2,8], "Destruidor": [2,4,2], "Arcano": [2,4,2], "Mentalista": [2,4,2], "Vitalista": [2,6,2], "Invocador": [2,6,2], "Elementalista": [2,5,2]}</textarea>
+        </div>
+        <div class="config-group">
+            <label>Índice do Menu Dropdown (Classe):</label>
+            <input type="text" id="confDropdown" value="0">
+        </div>
+        <div class="config-group">
+            <label>Índices Somente Leitura (Dados e Totais):</label>
+            <input type="text" id="confReadOnly" value="2, 3, 5, 6, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35">
+        </div>
+        <div class="config-group">
+            <label>Índices Texto Multilinha:</label>
+            <input type="text" id="confMulti" value="40, 41, 42">
+        </div>
+        <div class="config-group">
+            <label>Índices Alinhados à Esquerda (Resto é Centro):</label>
+            <input type="text" id="confLeft" value="36, 37, 40, 41, 42, 43">
+        </div>
+        <div class="config-group">
+            <label>Nomes Especiais (Índice:NomeNovo):</label>
+            <input type="text" id="confNames" value="3:res, 6:res2">
+        </div>
+    </div>
 </div>
 
 <div id="viewer-container">
     <div id="canvas-wrapper">
         <canvas id="pdf-canvas"></canvas>
-    </div>
-</div>
-
-<div id="field-menu">
-    <label>Nome/Label do Campo:</label>
-    <input type="text" id="edit-label">
-    
-    <label>Tipo de Lógica:</label>
-    <select id="edit-type">
-        <option value="text">Texto Simples</option>
-        <option value="multiline">Texto Multi-linha</option>
-        <option value="class-select">Seletor de Classe (Base)</option>
-        <option value="level">Nível (Gatilho)</option>
-        <option value="dice">Dado (Automático)</option>
-        <option value="total">Total (Cálculo)</option>
-    </select>
-
-    <div class="menu-btns">
-        <button class="btn-delete" onclick="deleteField()">Excluir</button>
-        <button class="btn-save" onclick="closeMenu()">OK</button>
     </div>
 </div>
 
