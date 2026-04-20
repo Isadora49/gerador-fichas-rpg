@@ -2,107 +2,72 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG v3.0 - Interativo</title>
+    <title>Editor de Fichas RPG No-Code</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        
         #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; flex-wrap: wrap; }
         #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
         #canvas-wrapper { position: relative; margin: 20px; }
         canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
         
-        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #c0392b; }
+        button { background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #ff5e4d; }
         button:disabled { background: #555; cursor: not-allowed; }
-        .btn-menu { background: #3498db; }
-        .btn-menu:hover { background: #2980b9; }
-        .btn-finish { background: #2ecc71; display: none; }
-        .btn-finish:hover { background: #27ae60; }
-        
-        /* Menu de Lógica (Painel Oculto) */
-        #config-panel {
-            display: none; position: absolute; top: 70px; left: 15px; background: #2c3e50; 
-            padding: 20px; border: 2px solid #3498db; border-radius: 8px; z-index: 2000; 
-            max-height: 80vh; overflow-y: auto; width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-        }
-        #config-panel h3 { margin-top: 0; color: #3498db; border-bottom: 1px solid #555; padding-bottom: 10px; }
-        .config-group { margin-bottom: 15px; }
-        .config-group label { display: block; font-size: 12px; margin-bottom: 5px; color: #bdc3c7; }
-        .config-group input[type="text"], .config-group input[type="number"], .config-group textarea {
-            width: 100%; padding: 8px; box-sizing: border-box; background: #1a1a1a; border: 1px solid #555; color: white; border-radius: 4px;
-        }
+        .btn-add { background: #27ae60; }
+        .btn-add:hover { background: #2ecc71; }
 
         /* Marcador Interativo */
         .marker {
-            position: absolute; background: rgba(231, 76, 60, 0.6); border: 2px solid #e74c3c; color: white;
-            font-size: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center;
-            text-align: center; cursor: move; resize: both; overflow: hidden; min-width: 30px; min-height: 15px;
-            user-select: none; z-index: 500;
+            position: absolute;
+            background: rgba(231, 76, 60, 0.7);
+            border: 2px solid #e74c3c;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: move;
+            resize: both;
+            overflow: visible;
+            min-width: 40px;
+            min-height: 20px;
+            user-select: none;
+            z-index: 500;
         }
-        .marker .label-text { pointer-events: none; padding: 2px; }
+
+        /* Botão de deletar dentro do campo */
+        .btn-del {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: black;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 1px solid white;
+        }
+
+        .label-text { pointer-events: none; padding: 2px; text-shadow: 1px 1px 2px black; }
+        
+        #status { font-size: 0.9em; color: #ccc; }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
     <input type="file" id="uploadPdf" accept="application/pdf">
-    <button id="btnMenu" class="btn-menu">⚙️ Menu de Lógica</button>
-    <div id="status">Aguardando PDF...</div>
-    <button id="btnFinish" class="btn-finish">✅ FINALIZAR MARCAÇÕES</button>
+    <button id="btnAddField" class="btn-add">➕ NOVO CAMPO</button>
     <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
-</div>
-
-<div id="config-panel">
-    <h3>Configurações do PDF</h3>
-    
-    <div class="config-group">
-        <label title="0 = Infinito. Define com quantos cliques o sistema para.">Limite de Campos (0 para Infinito):</label>
-        <input type="number" id="confLimit" value="47">
-    </div>
-
-    <div class="config-group">
-        <label>Aumento Multiplicador (A cada X níveis):</label>
-        <input type="number" id="confMultStep" value="999" title="Coloque 999 para desativar, ou 10 para aumentar a força a cada 10 níveis.">
-    </div>
-
-    <div class="config-group">
-        <label title="Edite ou adicione novas classes e multiplicadores base aqui!">Classes e Status Base (JSON):</label>
-        <textarea id="confClasses" rows="5">{"Tank": [8,2,2], "Hibrido": [4,2,4], "Assassino": [2,2,8], "Destruidor": [2,4,2], "Arcano": [2,4,2], "Mentalista": [2,4,2], "Vitalista": [2,6,2], "Invocador": [2,6,2], "Elementalista": [2,5,2]}</textarea>
-    </div>
-
-    <div class="config-group">
-        <label>Índices Somente Leitura (Campos automáticos):</label>
-        <input type="text" id="confReadOnly" value="2, 3, 5, 6, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35">
-    </div>
-
-    <div class="config-group">
-        <label>Índices Alinhados à Esquerda:</label>
-        <input type="text" id="confLeft" value="36, 37, 40, 41, 42, 43">
-    </div>
-
-    <div class="config-group">
-        <label>Índices Multi-linha (Caixas de texto grandes):</label>
-        <input type="text" id="confMulti" value="40, 41, 42">
-    </div>
-
-    <div class="config-group">
-        <label>Índice do Dropdown (Lista de Classes):</label>
-        <input type="text" id="confDropdown" value="0">
-    </div>
-
-    <div class="config-group">
-        <label>Nomes Especiais da Matemática (Índice:NomeNovo):</label>
-        <input type="text" id="confNames" value="3:res, 6:res2">
-    </div>
-    
-    <div class="config-group">
-        <label>Gatilhos de Cálculo (Índices que disparam a conta):</label>
-        <input type="text" id="confTriggers" value="0, 1, 4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34">
-    </div>
-
-    <button onclick="document.getElementById('config-panel').style.display='none'" style="width:100%; background:#7f8c8d;">Fechar Menu</button>
+    <div id="status">Aguardando PDF...</div>
 </div>
 
 <div id="viewer-container">
