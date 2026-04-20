@@ -1,19 +1,27 @@
 const { PDFDocument, PDFName, PDFString, TextAlignment } = window.PDFLib || {};
 
 let pdfOriginalBytes = null;
-let fields = []; // Array de objetos { id, label, type, x, y, w, h, align, options, readonly }
-let selectedFieldId = null;
+let fieldCounter = 1;
+let selectedMarker = null;
 
 const canvas = document.getElementById('pdf-canvas');
 const wrapper = document.getElementById('canvas-wrapper');
 const statusEl = document.getElementById('status');
 const btnDownload = document.getElementById('btnDownload');
-const editorUI = document.getElementById('editor-ui');
-const noSelectionEl = document.getElementById('no-selection');
+
+// Elementos da UI de Propriedades
+const propForm = document.getElementById('properties-form');
+const noSelMsg = document.getElementById('no-selection-msg');
+const propIdInput = document.getElementById('propId');
+const propTypeSelect = document.getElementById('propType');
+const propAlignSelect = document.getElementById('propAlign');
+const btnDeleteField = document.getElementById('btnDeleteField');
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// CARREGAR PDF
+// -----------------------------------------------------
+// 1. CARREGAMENTO DO PDF
+// -----------------------------------------------------
 document.getElementById('uploadPdf').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -30,137 +38,126 @@ document.getElementById('uploadPdf').addEventListener('change', async (e) => {
         canvas.width = viewport.width;
         await page.render({ canvasContext: context, viewport: viewport }).promise;
         
+        // Limpa campos antigos ao carregar novo PDF
         document.querySelectorAll('.marker').forEach(m => m.remove());
-        fields = [];
-        statusEl.innerText = "PDF Carregado. Adicione campos!";
+        deselectMarker();
+        statusEl.innerText = "PDF Carregado. Use a caixa de ferramentas para adicionar campos.";
         btnDownload.disabled = false;
     } catch (err) {
         alert("Erro no PDF: " + err.message);
     }
 });
 
-// ADICIONAR NOVO CAMPO
-document.getElementById('btnAddField').addEventListener('click', () => {
-    if (!pdfOriginalBytes) return alert("Carregue um PDF primeiro!");
-    
-    const id = "c" + (fields.length + 1);
-    const newField = {
-        id: id,
-        label: "Novo Campo",
-        type: "text",
-        x: 50,
-        y: 50,
-        w: 80,
-        h: 25,
-        align: "Center",
-        options: "Opção 1, Opção 2",
-        readonly: false
-    };
-    
-    fields.push(newField);
-    createMarker(newField);
-});
+// -----------------------------------------------------
+// 2. CAIXA DE FERRAMENTAS (Adicionar Campos)
+// -----------------------------------------------------
+function createMarker(type) {
+    if (!pdfOriginalBytes) {
+        alert("Faça o upload de um PDF primeiro!");
+        return;
+    }
 
-function createMarker(fieldData) {
     const marker = document.createElement('div');
     marker.className = 'marker';
-    marker.id = `marker-${fieldData.id}`;
-    marker.style.width = fieldData.w + 'px';
-    marker.style.height = fieldData.h + 'px';
-    marker.style.left = fieldData.x + 'px';
-    marker.style.top = fieldData.y + 'px';
-    marker.innerHTML = `<span class="label-text">${fieldData.label}</span>`;
+    marker.dataset.id = `campo_${fieldCounter++}`;
+    marker.dataset.type = type;
+    marker.dataset.align = 'Center';
+
+    const defaultW = type === 'multiline' ? 120 : 80;
+    const defaultH = type === 'multiline' ? 60 : 25;
+
+    // Posiciona no centro do wrapper inicialmente
+    marker.style.width = defaultW + 'px';
+    marker.style.height = defaultH + 'px';
+    marker.style.left = (wrapper.clientWidth / 2 - defaultW / 2) + 'px';
+    marker.style.top = (wrapper.clientHeight / 2 - defaultH / 2) + 'px';
     
+    marker.innerHTML = `<span class="label-text">${marker.dataset.id}</span>`;
     wrapper.appendChild(marker);
+
+    makeDraggable(marker);
     
-    // Tornar selecionável
-    marker.addEventListener('mousedown', () => selectField(fieldData.id));
-    
-    makeDraggable(marker, fieldData);
-    makeResizable(marker, fieldData);
+    // Seleciona automaticamente o novo campo
+    selectMarker(marker);
 }
 
-function selectField(id) {
-    selectedFieldId = id;
-    document.querySelectorAll('.marker').forEach(m => m.classList.remove('selected'));
-    document.getElementById(`marker-${id}`).classList.add('selected');
+document.getElementById('btnAddTextField').addEventListener('click', () => createMarker('text'));
+document.getElementById('btnAddDropdown').addEventListener('click', () => createMarker('dropdown'));
+document.getElementById('btnAddMultiline').addEventListener('click', () => createMarker('multiline'));
+
+// -----------------------------------------------------
+// 3. INTERAÇÃO (Selecionar, Arrastar, Deletar)
+// -----------------------------------------------------
+function selectMarker(marker) {
+    if (selectedMarker) selectedMarker.classList.remove('selected');
+    selectedMarker = marker;
+    selectedMarker.classList.add('selected');
     
-    const field = fields.find(f => f.id === id);
+    // Atualiza Painel de Propriedades
+    noSelMsg.style.display = 'none';
+    propForm.style.display = 'block';
     
-    // Preencher UI de edição
-    noSelectionEl.style.display = 'none';
-    editorUI.style.display = 'block';
-    
-    document.getElementById('prop-id').value = field.id;
-    document.getElementById('prop-label').value = field.label;
-    document.getElementById('prop-type').value = field.type;
-    document.getElementById('prop-align').value = field.align;
-    document.getElementById('prop-options').value = field.options;
-    document.getElementById('prop-readonly').checked = field.readonly;
-    
-    document.getElementById('group-dropdown').style.display = (field.type === 'dropdown') ? 'block' : 'none';
+    propIdInput.value = marker.dataset.id;
+    propTypeSelect.value = marker.dataset.type;
+    propAlignSelect.value = marker.dataset.align;
 }
 
-// SINCRONIZAR UI -> OBJETO
-editorUI.addEventListener('input', (e) => {
-    const field = fields.find(f => f.id === selectedFieldId);
-    if (!field) return;
-    
-    field.id = document.getElementById('prop-id').value;
-    field.label = document.getElementById('prop-label').value;
-    field.type = document.getElementById('prop-type').value;
-    field.align = document.getElementById('prop-align').value;
-    field.options = document.getElementById('prop-options').value;
-    field.readonly = document.getElementById('prop-readonly').checked;
-    
-    // Atualizar visual do marcador
-    const marker = document.getElementById(`marker-${selectedFieldId}`);
-    marker.querySelector('.label-text').innerText = field.label;
-    document.getElementById('group-dropdown').style.display = (field.type === 'dropdown') ? 'block' : 'none';
+function deselectMarker() {
+    if (selectedMarker) selectedMarker.classList.remove('selected');
+    selectedMarker = null;
+    noSelMsg.style.display = 'block';
+    propForm.style.display = 'none';
+}
+
+// Clicar fora deseleciona
+wrapper.addEventListener('mousedown', (e) => {
+    if (e.target === canvas) deselectMarker();
 });
 
-// EXCLUIR CAMPO
-document.getElementById('btnDeleteField').addEventListener('click', () => {
-    fields = fields.filter(f => f.id !== selectedFieldId);
-    document.getElementById(`marker-${selectedFieldId}`).remove();
-    editorUI.style.display = 'none';
-    noSelectionEl.style.display = 'block';
+// Atualizar Propriedades via Painel
+propIdInput.addEventListener('input', (e) => {
+    if (!selectedMarker) return;
+    selectedMarker.dataset.id = e.target.value;
+    selectedMarker.querySelector('.label-text').innerText = e.target.value;
+});
+propTypeSelect.addEventListener('change', (e) => { if (selectedMarker) selectedMarker.dataset.type = e.target.value; });
+propAlignSelect.addEventListener('change', (e) => { if (selectedMarker) selectedMarker.dataset.align = e.target.value; });
+
+btnDeleteField.addEventListener('click', () => {
+    if (selectedMarker) {
+        selectedMarker.remove();
+        deselectMarker();
+    }
 });
 
-function makeDraggable(el, data) {
+function makeDraggable(el) {
     let isDragging = false;
     let offset = { x: 0, y: 0 };
 
     el.addEventListener('mousedown', (e) => {
-        if (e.target.className === 'btn-del') return;
+        selectMarker(el);
+        // Previne arrastar se estiver clicando no canto de redimensionamento (resize grip)
+        if (e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return; 
         isDragging = true;
         offset = { x: e.clientX - el.offsetLeft, y: e.clientY - el.offsetTop };
+        e.stopPropagation(); // Evita que o click vaze para o wrapper
     });
 
     document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
-        const x = e.clientX - offset.x;
-        const y = e.clientY - offset.y;
-        el.style.left = x + 'px';
-        el.style.top = y + 'px';
-        data.x = x;
-        data.y = y;
+        el.style.left = (e.clientX - offset.x) + 'px';
+        el.style.top = (e.clientY - offset.y) + 'px';
     });
 
-    document.addEventListener('mouseup', () => isDragging = false);
+    document.addEventListener('mouseup', () => { isDragging = false; });
 }
 
-function makeResizable(el, data) {
-    const observer = new ResizeObserver(() => {
-        data.w = el.offsetWidth;
-        data.h = el.offsetHeight;
-    });
-    observer.observe(el);
-}
-
-// GERAÇÃO DO PDF
+// -----------------------------------------------------
+// 4. GERAÇÃO DO PDF FINAL
+// -----------------------------------------------------
 btnDownload.addEventListener('click', async () => {
     try {
+        statusEl.innerText = "Gerando PDF...";
         const pdfDoc = await PDFDocument.load(pdfOriginalBytes.slice(0));
         const form = pdfDoc.getForm();
         const page = pdfDoc.getPage(0);
@@ -169,73 +166,74 @@ btnDownload.addEventListener('click', async () => {
         const cWidth = canvas.width;
         const cHeight = canvas.height;
 
-        fields.forEach(fData => {
+        // Pegar todas as classes digitadas na UI
+        const classesTexto = document.getElementById('configClasses').value;
+        const opcoesClasses = classesTexto.split(',').map(s => s.trim()).filter(s => s);
+        opcoesClasses.unshift(' '); // Opção vazia padrão
+
+        const markers = document.querySelectorAll('.marker');
+
+        // Loop por todos os campos criados livremente
+        markers.forEach(el => {
+            const id = el.dataset.id;
+            const type = el.dataset.type;
+            const align = el.dataset.align;
+            
             let f;
-            if (fData.type === 'dropdown') {
-                f = form.createDropdown(fData.id);
-                const opts = fData.options.split(',').map(o => o.trim());
-                f.addOptions(opts);
-            } else {
-                f = form.createTextField(fData.id);
-                if (fData.type === 'multiline') f.enableMultiline();
+            try {
+                if (type === 'dropdown') {
+                    f = form.createDropdown(id);
+                    f.addOptions(opcoesClasses);
+                    f.select(' ');
+                } else {
+                    f = form.createTextField(id);
+                    if (type === 'multiline') f.enableMultiline();
+                    if (type === 'readonly') f.enableReadOnly();
+                    
+                    f.acroField.dict.set(PDFName.of('DA'), PDFString.of('/Helvetica 12 Tf 0 g'));
+                    f.setFontSize(12);
+                    f.setAlignment(TextAlignment[align]);
+                }
+            } catch (err) {
+                console.warn(`Campo ${id} já existe ou falhou.`, err);
+                return;
             }
 
-            if (fData.readonly) f.enableReadOnly();
+            const elLeft = parseFloat(el.style.left);
+            const elTop = parseFloat(el.style.top);
+            const elW = el.offsetWidth;
+            const elH = el.offsetHeight;
 
-            f.setFontSize(12);
-            f.setAlignment(TextAlignment[fData.align]);
-
+            // Converter coordenadas HTML para coordenadas do PDF
             f.addToPage(page, { 
-                x: (fData.x * width) / cWidth, 
-                y: height - ((fData.y * height) / cHeight) - ((fData.h * height) / cHeight), 
-                width: (fData.w * width) / cWidth, 
-                height: (fData.h * height) / cHeight,
+                x: (elLeft * width) / cWidth, 
+                y: height - ((elTop * height) / cHeight) - ((elH * height) / cHeight), 
+                width: (elW * width) / cWidth, 
+                height: (elH * height) / cHeight,
                 borderWidth: 0 
             });
         });
 
-        // CONSTRUIR SCRIPT DINÂMICO BASEADO NO JSON DA UI
-        const logicConfig = document.getElementById('logic-config').value;
-        const scriptMotor = `
-            var escolha = this.getField("c1").value;
-            var bases = ${logicConfig};
-            var b = bases[escolha] || [0,0,0];
-            var valBase1 = b[0], valBase2 = b[1], valBase3 = b[2];
-
-            function getDado(nivel) {
-                nivel = Number(nivel) || 0;
-                if (nivel >= 51) return "1d100"; if (nivel >= 36) return "1d50";
-                if (nivel >= 26) return "1d20"; if (nivel >= 21) return "1d12";
-                if (nivel >= 16) return "1d10"; if (nivel >= 11) return "1d8";
-                if (nivel >= 6) return "1d6"; return "1d4";
-            }
-            function getD(nivel) {
-                nivel = Number(nivel);
-                return (nivel >= 51)?100:(nivel >= 36)?50:(nivel >= 26)?20:(nivel >= 21)?12:(nivel >= 16)?10:(nivel >= 11)?8:(nivel >= 6)?6:4;
-            }
-
-            // Exemplo de automação fixa mantida do seu código original
-            try {
-                var n1 = Number(this.getField("c2").value) || 0;
-                if(this.getField("c3")) this.getField("c3").value = getDado(n1);
-                if(this.getField("res")) this.getField("res").value = (valBase1 * n1) + getD(n1);
-                
-                var n2 = Number(this.getField("c5").value) || 0;
-                if(this.getField("c6")) this.getField("c6").value = getDado(n2);
-            } catch(e) {}
-        `;
+        // NOTA SOBRE LÓGICA DE PROGRAMAÇÃO EMBUTIDA NO PDF:
+        // Se você renomeou os campos livremente, o script original de RPG vai falhar
+        // pois ele procurava por "c1", "res", etc. 
+        // Abaixo está uma versão simplificada do seu motor embutido que você pode expandir.
+        
+        const scriptMotor = [
+            '// Script de Lógica do PDF',
+            'try {',
+            '  var escolha = this.getField("c1") ? this.getField("c1").value : "";',
+            '  // Se o campo de resultado existir, podemos colocar lógica aqui',
+            '} catch(e) {}'
+        ].join('\n');
 
         const action = pdfDoc.context.obj({
-            Type: 'Action', S: 'JavaScript', JS: PDFString.of(scriptMotor)
+            Type: 'Action',
+            S: 'JavaScript',
+            JS: PDFString.of(scriptMotor)
         });
 
-        // Aplicar gatilhos em todos os campos que não são apenas leitura
-        fields.filter(f => !f.readonly).forEach(fData => {
-            try {
-                const field = form.getField(fData.id);
-                field.acroField.dict.set(PDFName.of('AA'), pdfDoc.context.obj({ K: action, V: action, Bl: action }));
-            } catch(e) {}
-        });
+        form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
 
         const finalPdfBytes = await pdfDoc.save();
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
@@ -243,8 +241,11 @@ btnDownload.addEventListener('click', async () => {
         a.href = URL.createObjectURL(blob);
         a.download = "ficha_customizada.pdf";
         a.click();
+        statusEl.innerText = "PDF baixado com sucesso!";
+        
     } catch (err) {
         console.error(err);
-        alert("Erro ao gerar PDF: " + err.message);
+        alert("Erro técnico ao gerar o PDF: " + err.message);
+        statusEl.innerText = "Erro ao gerar PDF.";
     }
 });
