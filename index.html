@@ -2,126 +2,100 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG v3.0 - No-Code</title>
+    <title>Editor Dinâmico de Fichas RPG v3.0</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
+        body { font-family: sans-serif; display: flex; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
         
-        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        /* Layout Principal */
+        #left-panel, #right-panel { width: 250px; background: #222; padding: 20px; display: flex; flex-direction: column; gap: 15px; border-right: 2px solid #e74c3c; z-index: 1000; overflow-y: auto; }
+        #right-panel { border-right: none; border-left: 2px solid #e74c3c; }
+        #center-panel { flex: 1; display: flex; flex-direction: column; position: relative; }
+        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; }
+        #viewer-container { flex: 1; overflow: auto; background: #333; display: flex; justify-content: center; align-items: flex-start; padding: 20px; }
         
-        #main-container { display: flex; flex: 1; overflow: hidden; }
+        #canvas-wrapper { position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        canvas { border: 1px solid #000; display: block; }
         
-        #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; padding: 20px; }
-        
-        #canvas-wrapper { position: relative; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
-        canvas { border: 1px solid #444; cursor: crosshair; }
-
-        /* Painel Lateral de Ferramentas */
-        #side-panel { width: 300px; background: #252525; border-left: 2px solid #444; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
-        
-        .prop-group { background: #333; padding: 10px; border-radius: 5px; border-left: 3px solid #e74c3c; }
-        .prop-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
-        .prop-group input, .prop-group select, .prop-group textarea { width: 100%; background: #111; border: 1px solid #555; color: white; padding: 5px; box-sizing: border-box; }
-
-        /* Marcadores */
-        .marker {
-            position: absolute;
-            background: rgba(231, 76, 60, 0.4);
-            border: 2px solid #e74c3c;
-            color: white;
-            font-size: 10px;
-            cursor: move;
-            resize: both;
-            overflow: hidden;
-            z-index: 500;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .marker.selected { background: rgba(52, 152, 219, 0.6); border-color: #3498db; }
-        .btn-del { position: absolute; top: 0; right: 0; background: red; color: white; border: none; cursor: pointer; font-size: 10px; padding: 2px 5px; }
-
-        button { background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button { background: #e74c3c; color: white; border: none; padding: 10px; border-radius: 5px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; }
         button:hover { background: #c0392b; }
         button:disabled { background: #555; cursor: not-allowed; }
-        .btn-add { background: #27ae60; }
-        .btn-add:hover { background: #219150; }
+        input[type="text"], input[type="file"], select, textarea { width: 100%; padding: 8px; box-sizing: border-box; background: #333; color: white; border: 1px solid #555; border-radius: 4px; }
+        
+        /* Marcador Interativo */
+        .marker {
+            position: absolute;
+            background: rgba(52, 152, 219, 0.4);
+            border: 2px solid #3498db;
+            color: white; font-size: 10px; font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            cursor: move; resize: both; overflow: hidden;
+            min-width: 30px; min-height: 15px; user-select: none; z-index: 500;
+        }
+        .marker.selected { background: rgba(231, 76, 60, 0.6); border-color: #e74c3c; z-index: 501; box-shadow: 0 0 10px #e74c3c; }
+        .marker .label-text { pointer-events: none; padding: 2px; text-align: center; word-wrap: break-word; }
+        
+        h3 { margin-top: 0; font-size: 16px; border-bottom: 1px solid #555; padding-bottom: 5px; color: #e74c3c; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; margin-bottom: 5px; color: #ccc; }
     </style>
 </head>
 <body>
 
-<div id="toolbar">
-    <input type="file" id="uploadPdf" accept="application/pdf">
-    <button class="btn-add" id="btnAddField">+ Novo Campo</button>
-    <button id="btnDownload" disabled>GERAR PDF FINAL</button>
-    <div id="status">Carregue um PDF para começar</div>
+<div id="left-panel">
+    <h3>Caixa de Ferramentas</h3>
+    <button id="btnAddTextField">+ Campo de Texto</button>
+    <button id="btnAddDropdown">+ Campo Dropdown</button>
+    <button id="btnAddMultiline">+ Campo Multilinhas</button>
+    
+    <div style="margin-top: 30px;">
+        <h3>Lógica do PDF (Avançado)</h3>
+        <p style="font-size: 11px; color: #aaa;">Classes separadas por vírgula:</p>
+        <textarea id="configClasses" rows="3">Tank, Hibrido, Assassino, Destruidor, Arcano</textarea>
+    </div>
 </div>
 
-<div id="main-container">
+<div id="center-panel">
+    <div id="toolbar">
+        <input type="file" id="uploadPdf" accept="application/pdf" style="width: auto;">
+        <div id="status">Faça upload de um PDF para começar.</div>
+        <button id="btnDownload" disabled style="width: auto; margin-left: auto;">GERAR PDF FINAL</button>
+    </div>
     <div id="viewer-container">
         <div id="canvas-wrapper">
             <canvas id="pdf-canvas"></canvas>
         </div>
     </div>
+</div>
 
-    <div id="side-panel">
-        <h3>Propriedades</h3>
-        <div id="no-selection" style="color: #888; font-style: italic;">Selecione um campo para editar</div>
-        
-        <div id="editor-ui" style="display: none;">
-            <div class="prop-group">
-                <label>ID do Campo (Nome no PDF)</label>
-                <input type="text" id="prop-id">
-            </div>
-            <div class="prop-group">
-                <label>Texto de Exibição (Label)</label>
-                <input type="text" id="prop-label">
-            </div>
-            <div class="prop-group">
-                <label>Tipo de Campo</label>
-                <select id="prop-type">
-                    <option value="text">Texto Comum</option>
-                    <option value="dropdown">Lista de Escolha (Dropdown)</option>
-                    <option value="multiline">Texto Multi-linha</option>
-                </select>
-            </div>
-            <div class="prop-group">
-                <label>Alinhamento</label>
-                <select id="prop-align">
-                    <option value="Center">Centralizado</option>
-                    <option value="Left">Esquerda</option>
-                    <option value="Right">Direita</option>
-                </select>
-            </div>
-            <div class="prop-group" id="group-dropdown" style="display:none;">
-                <label>Opções da Lista (separadas por vírgula)</label>
-                <textarea id="prop-options" rows="3"></textarea>
-            </div>
-            <div class="prop-group">
-                <label>Apenas Leitura (Calculado)</label>
-                <input type="checkbox" id="prop-readonly" style="width: auto;">
-            </div>
-            <hr>
-            <button id="btnDeleteField" style="width:100%; background: #c0392b;">Excluir Campo</button>
+<div id="right-panel">
+    <h3>Propriedades do Campo</h3>
+    <div id="no-selection-msg">Nenhum campo selecionado. Clique em um campo no PDF.</div>
+    
+    <div id="properties-form" style="display: none;">
+        <div class="form-group">
+            <label>ID do Campo (Nome no PDF):</label>
+            <input type="text" id="propId">
         </div>
-
-        <div style="margin-top: 20px; border-top: 1px solid #444; padding-top: 20px;">
-            <h4>Lógica de Multiplicadores</h4>
-            <p style="font-size: 11px; color: #aaa;">Edite as classes e valores sem mexer no código:</p>
-            <textarea id="logic-config" style="width: 100%; height: 150px; background: #111; color: #0f0; font-family: monospace; font-size: 11px;">
-{
-  "Tank": [8,2,2],
-  "Hibrido": [4,2,4],
-  "Assassino": [2,2,8],
-  "Destruidor": [2,4,2],
-  "Arcano": [2,4,2],
-  "Mentalista": [2,4,2],
-  "Vitalista": [2,6,2],
-  "Invocador": [2,6,2],
-  "Elementalista": [2,5,2]
-}</textarea>
+        <div class="form-group">
+            <label>Tipo de Campo:</label>
+            <select id="propType">
+                <option value="text">Texto / Número</option>
+                <option value="multiline">Múltiplas Linhas</option>
+                <option value="dropdown">Dropdown (Lista)</option>
+                <option value="readonly">Apenas Leitura (Resultados)</option>
+            </select>
         </div>
+        <div class="form-group">
+            <label>Alinhamento do Texto:</label>
+            <select id="propAlign">
+                <option value="Left">Esquerda</option>
+                <option value="Center">Centro</option>
+                <option value="Right">Direita</option>
+            </select>
+        </div>
+        <button id="btnDeleteField" style="background: #c0392b; margin-top: 20px;">Excluir Campo</button>
     </div>
 </div>
 
