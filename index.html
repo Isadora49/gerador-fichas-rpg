@@ -2,88 +2,126 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG Ultra</title>
+    <title>Editor de Fichas RPG v3.0 - No-Code</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; flex-wrap: wrap; }
-        #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
-        #canvas-wrapper { position: relative; margin: 20px; }
-        canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
         
-        /* Estilização da Toolbox */
-        .tool-group { display: flex; align-items: center; gap: 8px; background: #333; padding: 5px 10px; border-radius: 4px; }
-        input, select { background: #444; color: white; border: 1px solid #555; padding: 5px; border-radius: 3px; }
-        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #ff5e4d; }
-        button:disabled { background: #555; cursor: not-allowed; }
+        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        
+        #main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; padding: 20px; }
+        
+        #canvas-wrapper { position: relative; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
+        canvas { border: 1px solid #444; cursor: crosshair; }
 
-        /* Marcador Dinâmico */
+        /* Painel Lateral de Ferramentas */
+        #side-panel { width: 300px; background: #252525; border-left: 2px solid #444; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        
+        .prop-group { background: #333; padding: 10px; border-radius: 5px; border-left: 3px solid #e74c3c; }
+        .prop-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        .prop-group input, .prop-group select, .prop-group textarea { width: 100%; background: #111; border: 1px solid #555; color: white; padding: 5px; box-sizing: border-box; }
+
+        /* Marcadores */
         .marker {
             position: absolute;
             background: rgba(231, 76, 60, 0.4);
             border: 2px solid #e74c3c;
             color: white;
-            font-size: 11px;
-            font-weight: bold;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            font-size: 10px;
             cursor: move;
             resize: both;
-            overflow: visible;
-            min-width: 40px;
-            min-height: 20px;
-            user-select: none;
+            overflow: hidden;
             z-index: 500;
-        }
-        .marker:hover { background: rgba(231, 76, 60, 0.7); }
-        .marker .delete-btn {
-            position: absolute;
-            top: -10px;
-            right: -10px;
-            background: black;
-            color: white;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
-            cursor: pointer;
-            border: 1px solid #e74c3c;
         }
-        .label-text { pointer-events: none; text-shadow: 1px 1px 2px black; }
+        .marker.selected { background: rgba(52, 152, 219, 0.6); border-color: #3498db; }
+        .btn-del { position: absolute; top: 0; right: 0; background: red; color: white; border: none; cursor: pointer; font-size: 10px; padding: 2px 5px; }
+
+        button { background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #c0392b; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        .btn-add { background: #27ae60; }
+        .btn-add:hover { background: #219150; }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
-    <div class="tool-group">
-        <label>1. Carregar:</label>
-        <input type="file" id="uploadPdf" accept="application/pdf">
-    </div>
-    
-    <div class="tool-group">
-        <label>2. Config. do Campo:</label>
-        <input type="text" id="fieldName" placeholder="Ex: c1, nome, forca">
-        <select id="fieldType">
-            <option value="text">Texto Simples</option>
-            <option value="multiline">Texto Multi-linha</option>
-            <option value="dropdown">Dropdown (Classes)</option>
-        </select>
-    </div>
-
-    <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
-    <div id="status">Aguardando PDF...</div>
+    <input type="file" id="uploadPdf" accept="application/pdf">
+    <button class="btn-add" id="btnAddField">+ Novo Campo</button>
+    <button id="btnDownload" disabled>GERAR PDF FINAL</button>
+    <div id="status">Carregue um PDF para começar</div>
 </div>
 
-<div id="viewer-container">
-    <div id="canvas-wrapper">
-        <canvas id="pdf-canvas"></canvas>
+<div id="main-container">
+    <div id="viewer-container">
+        <div id="canvas-wrapper">
+            <canvas id="pdf-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="side-panel">
+        <h3>Propriedades</h3>
+        <div id="no-selection" style="color: #888; font-style: italic;">Selecione um campo para editar</div>
+        
+        <div id="editor-ui" style="display: none;">
+            <div class="prop-group">
+                <label>ID do Campo (Nome no PDF)</label>
+                <input type="text" id="prop-id">
+            </div>
+            <div class="prop-group">
+                <label>Texto de Exibição (Label)</label>
+                <input type="text" id="prop-label">
+            </div>
+            <div class="prop-group">
+                <label>Tipo de Campo</label>
+                <select id="prop-type">
+                    <option value="text">Texto Comum</option>
+                    <option value="dropdown">Lista de Escolha (Dropdown)</option>
+                    <option value="multiline">Texto Multi-linha</option>
+                </select>
+            </div>
+            <div class="prop-group">
+                <label>Alinhamento</label>
+                <select id="prop-align">
+                    <option value="Center">Centralizado</option>
+                    <option value="Left">Esquerda</option>
+                    <option value="Right">Direita</option>
+                </select>
+            </div>
+            <div class="prop-group" id="group-dropdown" style="display:none;">
+                <label>Opções da Lista (separadas por vírgula)</label>
+                <textarea id="prop-options" rows="3"></textarea>
+            </div>
+            <div class="prop-group">
+                <label>Apenas Leitura (Calculado)</label>
+                <input type="checkbox" id="prop-readonly" style="width: auto;">
+            </div>
+            <hr>
+            <button id="btnDeleteField" style="width:100%; background: #c0392b;">Excluir Campo</button>
+        </div>
+
+        <div style="margin-top: 20px; border-top: 1px solid #444; padding-top: 20px;">
+            <h4>Lógica de Multiplicadores</h4>
+            <p style="font-size: 11px; color: #aaa;">Edite as classes e valores sem mexer no código:</p>
+            <textarea id="logic-config" style="width: 100%; height: 150px; background: #111; color: #0f0; font-family: monospace; font-size: 11px;">
+{
+  "Tank": [8,2,2],
+  "Hibrido": [4,2,4],
+  "Assassino": [2,2,8],
+  "Destruidor": [2,4,2],
+  "Arcano": [2,4,2],
+  "Mentalista": [2,4,2],
+  "Vitalista": [2,6,2],
+  "Invocador": [2,6,2],
+  "Elementalista": [2,5,2]
+}</textarea>
+        </div>
     </div>
 </div>
 
