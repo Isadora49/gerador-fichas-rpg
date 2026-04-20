@@ -2,94 +2,96 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG v3.0 - Visual Builder</title>
+    <title>RPG Sheet Builder Pro v3.0</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
-        #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #121212; color: #e0e0e0; overflow: hidden; }
+        #toolbar { padding: 15px; background: #1e1e1e; border-bottom: 2px solid #3498db; display: flex; gap: 15px; align-items: center; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        #main-container { display: flex; flex: 1; overflow: hidden; }
+        #viewer-container { flex: 1; overflow: auto; position: relative; background: #2c2c2c; display: flex; justify-content: center; padding: 20px; }
+        #canvas-wrapper { position: relative; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
+        canvas { border: 1px solid #444; cursor: crosshair; }
         
-        #main-area { display: flex; flex: 1; overflow: hidden; }
-        
-        #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; align-items: flex-start; }
-        #canvas-wrapper { position: relative; margin: 20px; }
-        canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        
-        /* Painel Lateral (Caixa de Ferramentas) */
-        #properties-panel { width: 300px; background: #2c3e50; padding: 20px; box-sizing: border-box; border-left: 2px solid #34495e; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        /* Painel Lateral de Propriedades */
+        #props-panel { width: 300px; background: #1e1e1e; border-left: 2px solid #333; padding: 20px; display: none; flex-direction: column; gap: 15px; overflow-y: auto; }
         .prop-group { display: flex; flex-direction: column; gap: 5px; }
-        .prop-group label { font-size: 12px; font-weight: bold; color: #bdc3c7; }
-        .prop-group input, .prop-group select { padding: 8px; border-radius: 4px; border: 1px solid #34495e; background: #ecf0f1; color: #2c3e50; font-family: monospace;}
+        .prop-group label { font-size: 12px; color: #3498db; font-weight: bold; text-transform: uppercase; }
+        input, select, textarea { background: #2d2d2d; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; }
         
-        button { background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #c0392b; }
+        button { background: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #2980b9; }
+        button.delete { background: #e74c3c; margin-top: 10px; }
         button:disabled { background: #555; cursor: not-allowed; }
-        #btnAdicionar { background: #2ecc71; }
-        #btnAdicionar:hover { background: #27ae60; }
-        #btnDelete { background: #e67e22; margin-top: 20px; }
-        
-        /* Marcador Interativo */
+
+        /* Marcador Dinâmico */
         .marker {
-            position: absolute; background: rgba(52, 152, 219, 0.7); border: 2px solid #2980b9;
-            color: white; font-size: 11px; font-weight: bold; display: flex; align-items: center; justify-content: center; text-align: center;
-            cursor: move; resize: both; overflow: hidden; min-width: 40px; min-height: 20px; user-select: none; z-index: 500;
+            position: absolute;
+            background: rgba(52, 152, 219, 0.3);
+            border: 2px solid #3498db;
+            color: white;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: move;
+            resize: both;
+            overflow: hidden;
+            min-width: 40px;
+            min-height: 20px;
+            z-index: 500;
         }
-        .marker.selected { background: rgba(231, 76, 60, 0.8); border-color: #c0392b; z-index: 600; box-shadow: 0 0 10px rgba(231,76,60,0.5); }
-        .marker .label-text { pointer-events: none; padding: 2px; word-break: break-all; }
+        .marker.selected { border-color: #f1c40f; background: rgba(241, 196, 15, 0.3); }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
     <input type="file" id="uploadPdf" accept="application/pdf">
-    <button id="btnAdicionar" disabled>+ NOVO CAMPO</button>
-    <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
+    <div id="status">Carregue um PDF para começar</div>
+    <button id="btnDownload" disabled>GERAR PDF FINAL</button>
 </div>
 
-<div id="main-area">
+<div id="main-container">
     <div id="viewer-container">
         <div id="canvas-wrapper">
             <canvas id="pdf-canvas"></canvas>
         </div>
     </div>
 
-    <div id="properties-panel">
-        <h3 style="margin-top: 0; border-bottom: 1px solid #7f8c8d; padding-bottom: 10px;">Propriedades do Campo</h3>
-        <p id="no-selection-msg" style="font-size: 14px; color: #bdc3c7;">Selecione um campo no PDF para editar.</p>
-        
-        <div id="editor-form" style="display: none; flex-direction: column; gap: 15px;">
-            <div class="prop-group">
-                <label>Nome do Campo (Referência)</label>
-                <input type="text" id="propName" placeholder="Ex: Forca, C1, Total">
-            </div>
-            
-            <div class="prop-group">
-                <label>Tipo de Campo</label>
-                <select id="propType">
-                    <option value="text">Texto Simples</option>
-                    <option value="multiline">Múltiplas Linhas</option>
-                    <option value="calc">Cálculo Automático</option>
-                </select>
-            </div>
-
-            <div class="prop-group" id="groupFormula" style="display: none;">
-                <label>Fórmula Matemática</label>
-                <input type="text" id="propFormula" placeholder="Ex: ([Forca] * 2) + 10">
-                <small style="color: #bdc3c7; font-size: 10px; margin-top: 5px;">
-                    Use colchetes <b>[nome]</b> para puxar o valor de outro campo.
-                </small>
-            </div>
-
-            <div class="prop-group">
-                <label>Alinhamento do Texto</label>
-                <select id="propAlign">
-                    <option value="left">Esquerda</option>
-                    <option value="center">Centro</option>
-                </select>
-            </div>
-
-            <button id="btnDelete">EXCLUIR ESTE CAMPO</button>
+    <div id="props-panel" id="propsPanel">
+        <h3 style="margin-top:0">Configurar Campo</h3>
+        <div class="prop-group">
+            <label>ID do Campo (único)</label>
+            <input type="text" id="propId" placeholder="ex: forca_total">
         </div>
+        <div class="prop-group">
+            <label>Tipo de Campo</label>
+            <select id="propType">
+                <option value="text">Texto / Número</option>
+                <option value="calc">Cálculo Automático</option>
+                <option value="list">Lista de Seleção (Dropdown)</option>
+            </select>
+        </div>
+        <div id="calcGroup" class="prop-group" style="display:none">
+            <label>Fórmula (use IDs dos campos)</label>
+            <input type="text" id="propFormula" placeholder="ex: c1 * 2 + c2">
+            <small style="color: #888">Ex: (campo1 + campo2) * 5</small>
+        </div>
+        <div id="listGroup" class="prop-group" style="display:none">
+            <label>Opções (separadas por vírgula)</label>
+            <textarea id="propOptions" placeholder="Guerreiro, Mago, Ladino"></textarea>
+        </div>
+        <div class="prop-group">
+            <label>Alinhamento</label>
+            <select id="propAlign">
+                <option value="center">Centralizado</option>
+                <option value="left">Esquerda</option>
+                <option value="right">Direita</option>
+            </select>
+        </div>
+        <button id="btnSaveProp">SALVAR ALTERAÇÕES</button>
+        <button class="delete" id="btnDeleteField">EXCLUIR CAMPO</button>
     </div>
 </div>
 
