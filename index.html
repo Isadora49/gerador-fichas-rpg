@@ -2,31 +2,33 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Editor de Fichas RPG No-Code</title>
+    <title>Editor de Fichas RPG Ultra</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1a1a1a; color: white; overflow: hidden; }
         #toolbar { padding: 15px; background: #222; border-bottom: 2px solid #e74c3c; display: flex; gap: 15px; align-items: center; z-index: 1000; flex-wrap: wrap; }
         #viewer-container { flex: 1; overflow: auto; position: relative; background: #333; display: flex; justify-content: center; }
         #canvas-wrapper { position: relative; margin: 20px; }
         canvas { border: 1px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
         
-        button { background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        /* Estilização da Toolbox */
+        .tool-group { display: flex; align-items: center; gap: 8px; background: #333; padding: 5px 10px; border-radius: 4px; }
+        input, select { background: #444; color: white; border: 1px solid #555; padding: 5px; border-radius: 3px; }
+        button { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: #ff5e4d; }
         button:disabled { background: #555; cursor: not-allowed; }
-        .btn-add { background: #27ae60; }
-        .btn-add:hover { background: #2ecc71; }
 
-        /* Marcador Interativo */
+        /* Marcador Dinâmico */
         .marker {
             position: absolute;
-            background: rgba(231, 76, 60, 0.7);
+            background: rgba(231, 76, 60, 0.4);
             border: 2px solid #e74c3c;
             color: white;
             font-size: 11px;
             font-weight: bold;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             cursor: move;
@@ -37,9 +39,8 @@
             user-select: none;
             z-index: 500;
         }
-
-        /* Botão de deletar dentro do campo */
-        .btn-del {
+        .marker:hover { background: rgba(231, 76, 60, 0.7); }
+        .marker .delete-btn {
             position: absolute;
             top: -10px;
             right: -10px;
@@ -48,24 +49,34 @@
             border-radius: 50%;
             width: 18px;
             height: 18px;
-            font-size: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 12px;
             cursor: pointer;
-            border: 1px solid white;
+            border: 1px solid #e74c3c;
         }
-
-        .label-text { pointer-events: none; padding: 2px; text-shadow: 1px 1px 2px black; }
-        
-        #status { font-size: 0.9em; color: #ccc; }
+        .label-text { pointer-events: none; text-shadow: 1px 1px 2px black; }
     </style>
 </head>
 <body>
 
 <div id="toolbar">
-    <input type="file" id="uploadPdf" accept="application/pdf">
-    <button id="btnAddField" class="btn-add">➕ NOVO CAMPO</button>
+    <div class="tool-group">
+        <label>1. Carregar:</label>
+        <input type="file" id="uploadPdf" accept="application/pdf">
+    </div>
+    
+    <div class="tool-group">
+        <label>2. Config. do Campo:</label>
+        <input type="text" id="fieldName" placeholder="Ex: c1, nome, forca">
+        <select id="fieldType">
+            <option value="text">Texto Simples</option>
+            <option value="multiline">Texto Multi-linha</option>
+            <option value="dropdown">Dropdown (Classes)</option>
+        </select>
+    </div>
+
     <button id="btnDownload" disabled>BAIXAR PDF CONFIGURADO</button>
     <div id="status">Aguardando PDF...</div>
 </div>
